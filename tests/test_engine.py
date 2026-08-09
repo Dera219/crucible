@@ -61,13 +61,11 @@ class TestDrift:
                 growth = 1 + (held * returns).sum()
                 held = held * (1 + returns) / growth
 
-        # Undo the execution lag so the target lands on the period it was computed for.
-        result = backtest(
-            prices.with_values(np.vstack([targets[1:], targets[-1:]])), prices, costs=CostModel()
-        )
+        # At execution_lag=1 the target for period t is used as-is: no compensating shift.
+        result = backtest(prices.with_values(targets), prices, costs=CostModel())
         naive = float(np.abs(np.diff(targets, axis=0, prepend=targets[:1])).sum())
 
-        assert result.turnover[2:].sum() == pytest.approx(0.0, abs=1e-9)
+        assert result.turnover[1:].sum() == pytest.approx(0.0, abs=1e-9)
         assert naive > 0.5  # what the wrong method would have charged for
 
     def test_an_equal_weight_target_does_require_rebalancing(self) -> None:

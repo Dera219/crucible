@@ -22,14 +22,25 @@ approximation; it is noise added to the cost estimate in both directions.
 
 ## 2. Execution happens after the signal, never at the same instant
 
-`execution_lag` rows separate a signal from the position it produces. The default of 1 means a
-signal computed from the close of *t* is held from *t* through *t+1* — you traded at that close.
-That is the academic convention and it is mildly optimistic: you learned the close and traded at
-it in the same instant.
+`execution_lag` counts periods between the signal's timestamp and the **start of the return it
+earns**. It is defined this way, rather than as an internal shift amount, because the shift is an
+implementation detail and the earned return is what anyone actually wants to reason about.
 
-`execution_lag=2` is the paranoid version — trade on the following open. Run both. A strategy
-whose edge disappears between lag 1 and lag 2 is a strategy whose edge lives entirely in the
-close it could not have traded at, which is worth knowing before funding it.
+- `execution_lag=1` (default): a signal computed from the close of *t* earns the return from *t*
+  to *t+1*. You traded at that close. This is the academic convention and it is mildly
+  optimistic — you learned the close and traded at it in the same instant.
+- `execution_lag=2`: the signal earns *t+1* to *t+2*. You computed overnight and traded the
+  following close. This is what most people can actually do.
+
+Run both. A strategy whose edge disappears between them lives entirely in a close it could not
+have traded at, which is worth knowing before funding it.
+
+`crucible.diagnostics` takes the same parameter with the same meaning, so an IC measured at one
+lag and a backtest run at another cannot silently disagree. An earlier version had the engine
+shifting by `execution_lag` and the diagnostic skipping by `execution_lag`, which made both a
+full period more conservative than documented — and made a planted signal with a true IC of 0.13
+measure at 0.008. A diagnostic that cannot find an edge you put there yourself is worse than no
+diagnostic.
 
 ## 3. Delisting is an assumption, not a fact
 
@@ -156,8 +167,9 @@ def backtest(
         dollar_volume: `(T, N)` for participation. Defaults to effectively infinite liquidity,
             which disables the impact term and should be treated as a known overstatement.
         volatility: `(T, N)` annualised. Defaults to a trailing 20-period estimate from `prices`.
-        execution_lag: Rows between a signal and the position it produces. 1 is the convention;
-            2 is the paranoid version. Run both.
+        execution_lag: Periods between the signal's timestamp and the start of the return it
+            earns. 1 means the signal at *t* earns *t* to *t+1* — the convention. 2 means it
+            earns *t+1* to *t+2*, which is what most people can actually execute. Run both.
         delisting_return: Return applied when a held asset becomes non-investable. The 0.0
             default assumes you exited at the last known price, which is optimistic.
         initial_equity: Starting capital.
@@ -190,7 +202,10 @@ def backtest(
 
     asset_returns = price_panel.pct_change(1).values
     investable = price_panel.investable
-    targets = np.nan_to_num(weights_panel.shift(execution_lag).values, nan=0.0)
+    # shift by lag-1, not lag: a position established at t already earns the t -> t+1 return
+    # below, so lag=1 needs no shift at all. Shifting by lag made every result a full period
+    # more conservative than documented.
+    targets = np.nan_to_num(weights_panel.shift(execution_lag - 1).values, nan=0.0)
     targets = np.where(investable, targets, 0.0)
 
     vol_values = np.nan_to_num(volatility_panel.values, nan=0.0)

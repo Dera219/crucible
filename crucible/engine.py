@@ -163,6 +163,7 @@ def backtest(
     prices: Panel,
     *,
     costs: CostModel | None = None,
+    returns: Panel | None = None,
     dollar_volume: Panel | None = None,
     volatility: Panel | None = None,
     execution_lag: int = 1,
@@ -180,6 +181,14 @@ def backtest(
         costs: Cost model. `None` runs frictionless, which is a diagnostic and never a result —
             every strategy is profitable if trading is free, so a zero-cost backtest mostly
             measures how often the strategy trades.
+        returns: `(T, N)` per-period returns, row *t* holding the return earned over the period
+            ending at *t* — the convention `pct_change(1)` and CRSP's `DlyRet` both follow.
+            `None` derives returns from `prices`, which is correct only if the price series is
+            genuinely total-return adjusted. When the vendor supplies an authoritative return
+            series (`Dataset.returns` carries CRSP's), pass it: re-deriving what the vendor
+            already computed is how a raw price series once made AAPL read as a -74.15% day.
+            Positions and delistings still key off `prices` — a NaN price means non-investable
+            regardless of what the return panel says.
         dollar_volume: `(T, N)` for participation. Defaults to effectively infinite liquidity,
             which disables the impact term and should be treated as a known overstatement.
         volatility: `(T, N)` annualised. Defaults to a trailing 20-period estimate from `prices`.
@@ -205,9 +214,16 @@ def backtest(
             f"boundary and the one thing every backtest gets to be wrong about for free."
         )
 
-    weights_panel, price_panel = align(target_weights, prices)
+    if returns is None:
+        weights_panel, price_panel = align(target_weights, prices)
+        returns_panel = price_panel.pct_change(1)
+    else:
+        # The vendor's own series, aligned alongside everything else. Deriving returns from a
+        # price panel is correct only when the prices are genuinely total-return adjusted —
+        # bug #16 was exactly this assumption failing on raw CRSP DlyPrc.
+        weights_panel, price_panel, returns_panel = align(target_weights, prices, returns)
     if volatility is None:
-        volatility_panel = price_panel.pct_change(1).rolling(20, "std") * np.sqrt(252)
+        volatility_panel = returns_panel.rolling(20, "std") * np.sqrt(252)
     else:
         (volatility_panel,) = align(volatility.select(price_panel.assets))
     if dollar_volume is None:
@@ -228,7 +244,7 @@ def backtest(
     if n_times <= execution_lag:
         raise PanelError(f"need more than execution_lag={execution_lag} timestamps, got {n_times}")
 
-    asset_returns = price_panel.pct_change(1).values
+    asset_returns = returns_panel.values
     investable = price_panel.investable
     # shift by lag-1, not lag: a position established at t already earns the t -> t+1 return
     # below, so lag=1 needs no shift at all. Shifting by lag made every result a full period

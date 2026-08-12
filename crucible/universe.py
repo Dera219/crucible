@@ -32,9 +32,11 @@ sold at the next — for reasons that have nothing to do with the strategy. On a
 this manufactures tens of percent of annual turnover, and the costs land on your result while the
 turnover appears in no signal.
 
-So entry and exit use different thresholds: a name must reach rank 400 to *join* and fall past
-rank 600 to *leave*. Inside the band, incumbency wins. This is what real index providers do, for
-the same reason.
+So entry and exit use different thresholds: on a top-500 screen, a name must reach rank 300 to
+*join* and fall past rank 800 to *leave*. Inside the band, incumbency wins. This is what real
+index providers do, for the same reason. The band's width was set by measuring churn on the real
+CRSP extract — the numbers are in `liquidity_screen`'s docstring — after the original, narrower
+default was found to manufacture 37.7% of the book per year in forced round trips.
 
 ## What this module cannot fix
 
@@ -127,8 +129,22 @@ def liquidity_screen(
         min_price: Absolute floor on price. Sub-$5 names have wide relative spreads, are often
             un-shortable, and are where cross-sectional signals go to produce fictional returns.
         window: Trailing periods for the averages.
-        entry_rank: Rank a non-member must reach to join. Defaults to `0.8 * top_n`.
-        exit_rank: Rank a member must fall past to leave. Defaults to `1.2 * top_n`.
+        entry_rank: Rank a non-member must reach to join. Defaults to `0.6 * top_n`.
+        exit_rank: Rank a member must fall past to leave. Defaults to `1.6 * top_n`.
+
+    The default band is sized empirically, not by taste. On the real CRSP extract — top-1000
+    over ~5,000 investable names, daily reconstitution, 2015-2025 — churn against band width:
+
+        enter/leave     mean members   churn/period   forced round trips
+        800 / 1200          997            3.34          37.7% of book/yr
+        700 / 1400         1038            2.05          20.2%
+        600 / 1600         1026            1.50          13.4%   <- default
+        500 / 2000          974            1.14           9.5%
+
+    The original 0.8x/1.2x default manufactured 37.7% of the book per year in round trips no
+    signal asked for. 0.6x/1.6x cuts that by two-thirds while mean membership stays on target;
+    going wider still buys little and lets members ride down to rank 2000, at which point a
+    "top-1000" universe is holding names nowhere near the top 1000.
 
     Returns:
         `(T, N)` boolean mask.
@@ -151,8 +167,8 @@ def liquidity_screen(
     if top_n is None:
         return eligible
 
-    enter_at = entry_rank if entry_rank is not None else max(1, int(top_n * 0.8))
-    leave_at = exit_rank if exit_rank is not None else int(top_n * 1.2)
+    enter_at = entry_rank if entry_rank is not None else max(1, int(top_n * 0.6))
+    leave_at = exit_rank if exit_rank is not None else int(top_n * 1.6)
     if enter_at > leave_at:
         raise PanelError(
             f"entry_rank {enter_at} must not exceed exit_rank {leave_at}: a name would have to "

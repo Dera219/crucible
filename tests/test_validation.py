@@ -310,3 +310,25 @@ class TestEvidenceRequirements:
         # An annualised Sharpe near 1.3 still needs many years against a 50-trial search.
         assert not survives(0.08, 500)
         assert survives(0.08, 8000)
+
+
+class TestVendorReturnsThroughFolds:
+    def test_full_sample_returns_pass_through_to_every_fold(self) -> None:
+        """`returns=` accepts the full-sample vendor series; align() slices it per fold.
+
+        Passing `Dataset.returns` unsliced must be identical to the derived path when the
+        series agrees with the prices — proving the intersection inside the engine lands on
+        exactly the fold's test window rather than mis-aligning or silently dropping rows.
+        """
+        panel = prices(600, 20)
+        folds = rolling_folds(panel, train_size=200, test_size=100, warmup=160)
+
+        derived = walk_forward(folds, fast_signal, panel, costs=CostModel())
+        vendor = walk_forward(
+            folds, fast_signal, panel, costs=CostModel(), returns=panel.pct_change(1)
+        )
+
+        np.testing.assert_allclose(vendor.returns, derived.returns, atol=1e-15)
+        assert [o.strategy_return for o in vendor.outcomes] == [
+            o.strategy_return for o in derived.outcomes
+        ]

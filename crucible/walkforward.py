@@ -337,7 +337,9 @@ def walk_forward(
         baseline: Comparison weights, defaulting to equal-weight-everything. A strategy that
             cannot beat holding the universe has not earned the complexity.
         execution_lag: Passed through to the engine.
-        **backtest_kwargs: Forwarded to `backtest`.
+        **backtest_kwargs: Forwarded to `backtest`. In particular `returns=` accepts the
+            vendor's full-sample return series (`Dataset.returns`); `align()` inside the engine
+            intersects it down to each fold's test window, so no per-fold slicing is needed.
 
     Returns:
         A `WalkForwardResult`. Check `.testable` before reading any number in it.

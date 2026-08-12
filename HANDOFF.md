@@ -10,7 +10,7 @@ hypothesis has been registered** — deliberately, because a backtest run before
 fixed is a trial that raises the deflation bar for whatever is eventually claimed.
 
 ```
-315 tests · ruff + mypy strict clean · public at github.com/Dera219/crucible
+319 tests · ruff + mypy strict clean (package AND scripts) · public at github.com/Dera219/crucible
 ```
 
 ## The data
@@ -73,16 +73,30 @@ pivot see identical rows. **Verified across all 14,993,678 observations: zero di
 a basis point, max error 7.11e-15 — floating-point noise.** The progression was 128,781 → 1,940 →
 0.
 
-**Still worth doing:** the engine derives returns via `price_panel.pct_change(1)`. When the vendor
-supplies an authoritative return series, re-deriving it is pointless and is what created bug #16.
-An optional `returns=` parameter on `backtest()` would remove the whole class of error rather than
-keep correcting for it.
+**DONE:** `backtest()` now takes an optional `returns=` panel, so the engine consumes the vendor's
+authoritative series (`Dataset.returns` carries CRSP's `DlyRet`) instead of re-deriving it —
+removing the class of error rather than correcting for it. Positions and delistings still key off
+`prices`: a NaN price means non-investable regardless of what the return panel says. The
+full-sample series passes through `walk_forward(**backtest_kwargs)` unsliced; `align()` inside the
+engine intersects it down to each fold's test window. Tested with a planted split — raw prices
+carrying a fake -75% day, vendor series carrying the truth — plus an exact-match check against the
+derived path and a fold pass-through check.
 
-### 4. Universe churn
+### 4. Universe churn — RESOLVED
 
-The verifier's hysteresis warning fired correctly: **3.53 membership changes per period** on the
-default top-1000 screen over a ~5,000-name universe. The default entry/exit band is too narrow at
-this breadth. Widen `entry_rank`/`exit_rank` before any real run.
+The band was widened empirically, not by taste — churn measured on the real extract at four
+widths (top-1000, daily reconstitution, 2015-2025):
+
+| enter/leave | mean members | churn/period | forced round trips |
+|---|---|---|---|
+| 800/1200 (old default) | 997 | 3.34 | 37.7% of book/yr |
+| 700/1400 | 1038 | 2.05 | 20.2% |
+| **600/1600 (new default)** | **1026** | **1.50** | **13.4%** |
+| 500/2000 | 974 | 1.14 | 9.5% |
+
+`liquidity_screen` now defaults to `0.6x/1.6x`: two-thirds less forced trading, membership still
+on target. Wider than that buys little and lets members ride to rank 2000, at which point a
+"top-1000" universe isn't one. The full table is in the docstring.
 
 ## The two bugs found in the last hour, for context on how to work here
 

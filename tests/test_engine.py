@@ -377,3 +377,64 @@ class TestTheDecompositionAddsUp:
             atol=1e-12,
         )
         assert result.equity[-1] == pytest.approx(float(np.prod(1 + result.net_returns)), rel=1e-7)
+
+
+class TestVendorReturns:
+    """The `returns=` parameter: use the vendor's series, don't re-derive it.
+
+    Deriving returns from prices is correct only when the prices are genuinely total-return
+    adjusted. Bug #16 was that assumption failing on raw CRSP DlyPrc — a 4:1 split read as a
+    -74% day. The fix at the loader level was to build an adjusted series, but the engine
+    re-deriving returns at all is the class of error; passing the vendor's own series removes it.
+    """
+
+    def test_omitting_returns_matches_the_derived_path_exactly(self) -> None:
+        """returns=prices.pct_change(1) must be a no-op relative to the default."""
+        prices = random_prices(100, 10)
+        weights = cs_scale(cs_demean(cs_rank(prices)))
+
+        default = backtest(weights, prices, costs=CostModel())
+        explicit = backtest(weights, prices, costs=CostModel(), returns=prices.pct_change(1))
+
+        np.testing.assert_allclose(default.net_returns, explicit.net_returns, atol=1e-15)
+        np.testing.assert_allclose(default.equity, explicit.equity, atol=1e-15)
+
+    def test_a_planted_split_is_neutralised_by_vendor_returns(self) -> None:
+        """Raw prices carry a fake -75% day; the vendor's series carries the truth.
+
+        A long position through the split must NOT lose 75%. This is the AAPL 2020-08-31
+        scenario: raw pct_change said -74.15%, CRSP DlyRet said +3.39%.
+        """
+        values = np.full((20, 2), 100.0)
+        values[10:, 0] = 25.0  # 4:1 split, unadjusted: pct_change reads -75%
+        prices = mk(values)
+
+        true_returns = np.zeros((20, 2))
+        true_returns[0] = np.nan  # no prior period, same as pct_change
+        vendor = mk(true_returns, name="dlyret")
+
+        weights = prices.with_values(np.full((20, 2), 0.5))
+        poisoned = backtest(weights, prices, costs=CostModel())
+        honest = backtest(weights, prices, costs=CostModel(), returns=vendor)
+
+        assert poisoned.net_returns.min() < -0.3  # the derived path swallows the fake crash
+        assert honest.equity[-1] == pytest.approx(honest.equity[0], rel=1e-9)
+        np.testing.assert_allclose(honest.gross_returns[1:], 0.0, atol=1e-15)
+
+    def test_investability_still_keys_off_prices(self) -> None:
+        """A NaN price is non-investable even if the vendor return panel has a value there.
+
+        No price means no trade. The return panel says what a holder earned; it does not say
+        the asset was tradable.
+        """
+        values = np.full((20, 2), 100.0)
+        values[5:, 1] = np.nan  # asset 1 leaves the data for good
+        prices = mk(values)
+        vendor = mk(np.zeros((20, 2)), name="dlyret")
+
+        weights = prices.with_values(np.full((20, 2), 0.5))
+        result = backtest(weights, prices, costs=CostModel(), returns=vendor)
+
+        # weight on the gone asset is forced to zero from t=5 onward
+        assert np.all(result.held_weights[5:, 1] == 0.0)
+        assert result.delisting_events == 1

@@ -123,7 +123,7 @@ def main(argv: list[str]) -> int:
 
     rule("4. Cross-sectional breadth over time")
     counts = data.prices.count_per_row()
-    years = [str(d.year) for d in data.prices.index]  # type: ignore[union-attr]
+    years = [str(d.year) for d in data.prices.index]
     print(f"  {'year':<8}{'median names':>14}{'min':>8}")
     thin_years = []
     for year in sorted(set(years)):
@@ -149,12 +149,12 @@ def main(argv: list[str]) -> int:
     n_extreme = int(np.nansum(extreme))
     print(f"  {n_extreme} moves beyond ±50%")
     if n_extreme:
-        rows, cols = np.where(extreme)
+        hit_rows, hit_cols = np.where(extreme)
         unexplained = 0
-        for row, col in zip(rows[:400], cols[:400], strict=True):
+        for row, col in zip(hit_rows[:400], hit_cols[:400], strict=True):
             asset = data.assets[col]
             window = data.listings.get(asset, (None, None))[1]
-            near_exit = window is not None and abs((data.prices.index[row] - window).days) <= 5  # type: ignore[operator]
+            near_exit = window is not None and abs((data.prices.index[row] - window).days) <= 5
             if not near_exit:
                 unexplained += 1
         # Compare a RATE against a rate. An earlier version compared `unexplained` — capped at

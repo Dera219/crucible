@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import sys
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 
 from crucible.preregistration import (
@@ -148,26 +149,24 @@ def main() -> int:
         print(f"  evidence for the softened claim: refused — {str(exc).split('.')[0]}")
 
     print("\n── three ways the run can come back ──")
-    baseline = {
-        "ic_mean": 0.021,
-        "ic_t_statistic": 3.1,
-        "monotonicity": 0.72,
-        "oos_fold_win_rate": 0.62,
-        "folds_scored": 9,
-        "folds_testable": True,
-        "annual_turnover": 5.4,
-        "survived_deflation": True,
-        "trials_used": 6,
-        "capacity": 1_100_000.0,
-        "test_window_bars": 252,
-    }
+    baseline = Evidence(
+        ic_mean=0.021,
+        ic_t_statistic=3.1,
+        monotonicity=0.72,
+        oos_fold_win_rate=0.62,
+        folds_scored=9,
+        folds_testable=True,
+        annual_turnover=5.4,
+        survived_deflation=True,
+        trials_used=6,
+        capacity=1_100_000.0,
+        test_window_bars=252,
+    )
     outcomes = {
-        "a clean result": Evidence(**baseline),
-        "no edge (IC below the bar)": Evidence(
-            **{**baseline, "ic_mean": 0.004, "ic_t_statistic": 0.9}
-        ),
-        "never warmed up": Evidence(**{**baseline, "test_window_bars": 60}),
-        "budget blown by a sweep": Evidence(**{**baseline, "trials_used": 200}),
+        "a clean result": baseline,
+        "no edge (IC below the bar)": replace(baseline, ic_mean=0.004, ic_t_statistic=0.9),
+        "never warmed up": replace(baseline, test_window_bars=60),
+        "budget blown by a sweep": replace(baseline, trials_used=200),
     }
     for label, evidence in outcomes.items():
         verdict, violations = assess(HYPOTHESIS, evidence)

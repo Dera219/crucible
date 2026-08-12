@@ -4,5 +4,32 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-data/cache/
+*.egg-info/
 state/
+
+# ── Licensed market data: NEVER commit ────────────────────────────────────────
+#
+# CRSP and Compustat are licensed to the subscribing institution. Redistributing
+# an extract — including pushing one to a public repository — violates the WRDS
+# subscriber agreement and can cost you, and your university, access for
+# everyone. WRDS.md instructs saving an export as crsp_daily.csv in this
+# directory, so these patterns are deliberately broad rather than precise.
+#
+# If you need to share a dataset, share the QUERY that produces it.
+*.csv
+*.tsv
+*.parquet
+*.feather
+*.xlsx
+*.xls
+*.dta
+*.sas7bdat
+*.h5
+*.hdf5
+*.pkl
+*.pickle
+*.db
+*.sqlite
+*.sqlite3
+data/
+journal.jsonl

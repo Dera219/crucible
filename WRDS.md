@@ -2,6 +2,16 @@
 
 Written while access was pending. Everything here is ready to run the day it lands.
 
+## Before anything: do not commit the data
+
+CRSP and Compustat are **licensed to the subscribing institution**. Redistributing an extract —
+including pushing one to a public repository — violates the WRDS subscriber agreement and can cost
+you, and everyone else at the university, access.
+
+`.gitignore` blocks `*.csv`, `*.parquet`, `*.dta` and a `data/` directory for exactly this reason,
+and the patterns are deliberately broad rather than precise. Keep it that way. If you need to share
+a dataset, share the **query** that produces it.
+
 ## The one query you need first
 
 WRDS has a web query builder (**Get Data → CRSP → Stock / Security Files → Daily Stock File**).

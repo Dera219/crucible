@@ -18,7 +18,14 @@ import polars as pl
 import pytest
 
 from crucible.costs import CostModel
-from crucible.data import DataError, dataset_from_panels, load_crsp_csv, long_to_panel
+from crucible.data import (
+    DataError,
+    Dataset,
+    dataset_from_panels,
+    load_crsp_ciz,
+    load_crsp_csv,
+    long_to_panel,
+)
 from crucible.engine import backtest
 from crucible.panel import Panel
 
@@ -308,3 +315,164 @@ class TestEndToEnd:
 
         assert result.traded
         assert result.delisting_events == 1
+
+
+CIZ_SCHEMA = {
+    "PERMNO": pl.Int64,
+    "DlyCalDt": pl.Utf8,
+    "DlyPrc": pl.Float64,
+    "DlyVol": pl.Float64,
+    "DlyPrcVol": pl.Float64,
+    "DlyRet": pl.Utf8,
+    "ShrOut": pl.Float64,
+    "ShareType": pl.Utf8,
+    "PrimaryExch": pl.Utf8,
+    "Ticker": pl.Utf8,
+}
+
+#: permno offset -> (sharetype, primaryexch). CIZ uses text codes, not numeric SHRCD/EXCHCD.
+CIZ_SECURITIES = [
+    ("NS", "N"),  # ordinary common, NYSE
+    ("NS", "Q"),  # ordinary common, Nasdaq — delists mid-sample
+    ("NS", "N"),
+    ("ADR", "N"),  # ADR — filtered out by share type
+    ("NS", "X"),  # unlisted venue — filtered out by exchange
+]
+CIZ_EXIT_ROW = 120
+
+
+@pytest.fixture
+def ciz_files(tmp_path: Path) -> tuple[Path, Path]:
+    rng = np.random.default_rng(4)
+    dates = [date(2023, 1, 1) + timedelta(days=i) for i in range(200)]
+    rows = []
+    for offset, (share_type, exchange) in enumerate(CIZ_SECURITIES):
+        prices = 100 * np.cumprod(1 + rng.normal(0.0003, 0.015, 200))
+        exit_at = CIZ_EXIT_ROW if offset == 1 else None
+        for i, when in enumerate(dates):
+            if exit_at is not None and i > exit_at:
+                continue
+            rows.append(
+                {
+                    "PERMNO": 20000 + offset,
+                    "DlyCalDt": when.isoformat(),
+                    "DlyPrc": round(float(prices[i]), 4),
+                    "DlyVol": float(rng.integers(1e5, 9e6)),
+                    "DlyPrcVol": float(rng.integers(1e7, 5e8)),
+                    "DlyRet": f"{rng.normal(0, 0.015):.6f}",
+                    "ShrOut": 1e6,
+                    "ShareType": share_type,
+                    "PrimaryExch": exchange,
+                    "Ticker": f"T{offset}",
+                }
+            )
+    daily = tmp_path / "ciz_daily.csv"
+    pl.DataFrame(rows, schema=CIZ_SCHEMA).write_csv(daily)
+
+    delist = tmp_path / "ciz_delist.csv"
+    pl.DataFrame({"PERMNO": [20001], "DLRET": [-0.72]}).write_csv(delist)
+    return daily, delist
+
+
+class TestCIZFormat:
+    """CRSP discontinued the legacy SIZ format after December 2024. CIZ is not a rename — the
+    date column, price, volume and return columns are all renamed, share and exchange codes
+    became text, and the delisting return moved to a separate table joined on PERMNO."""
+
+    def test_it_loads_a_ciz_daily_file(self, ciz_files: tuple[Path, Path]) -> None:
+        daily, delist = ciz_files
+
+        dataset = load_crsp_ciz(daily, delisting_path=delist)
+
+        assert dataset.assets == ("20000", "20001", "20002")
+
+    def test_text_share_types_filter_out_adrs(self, ciz_files: tuple[Path, Path]) -> None:
+        """CIZ `sharetype` is 'NS' for ordinary common, not the numeric SHRCD 10/11."""
+        daily, _ = ciz_files
+
+        assert "20003" not in load_crsp_ciz(daily).assets
+
+    def test_text_exchange_codes_filter_out_minor_venues(
+        self, ciz_files: tuple[Path, Path]
+    ) -> None:
+        daily, _ = ciz_files
+
+        assert "20004" not in load_crsp_ciz(daily).assets
+
+    def test_filters_can_be_disabled(self, ciz_files: tuple[Path, Path]) -> None:
+        daily, _ = ciz_files
+
+        dataset = load_crsp_ciz(daily, share_types=None, exchanges=None)
+
+        assert {"20003", "20004"} <= set(dataset.assets)
+
+    def test_the_delisting_return_comes_from_the_separate_table(
+        self, ciz_files: tuple[Path, Path]
+    ) -> None:
+        """The structural difference that matters most: DLRET is no longer a column in the
+        daily file."""
+        daily, delist = ciz_files
+
+        assert load_crsp_ciz(daily, delisting_path=delist).delisting_returns == {"20001": -0.72}
+
+    def test_without_the_delisting_table_there_are_no_returns(
+        self, ciz_files: tuple[Path, Path]
+    ) -> None:
+        """Runs, but falls back to the engine's optimistic exit-at-last-price assumption."""
+        daily, _ = ciz_files
+
+        assert load_crsp_ciz(daily).delisting_returns == {}
+
+    def test_dollar_volume_uses_crsps_own_column(self, ciz_files: tuple[Path, Path]) -> None:
+        """CIZ supplies dlyprcvol directly; the legacy loader had to multiply volume by price."""
+        daily, _ = ciz_files
+
+        assert np.nanmin(load_crsp_ciz(daily).dollar_volume.values) >= 1e7
+
+    def test_delistings_are_detected_from_the_daily_file(
+        self, ciz_files: tuple[Path, Path]
+    ) -> None:
+        daily, delist = ciz_files
+
+        listings = load_crsp_ciz(daily, delisting_path=delist).listings
+
+        assert listings["20000"][1] is None
+        assert listings["20001"][1] is not None
+
+    def test_a_legacy_file_is_refused_with_a_pointer(self, tmp_path: Path) -> None:
+        """Handing a SIZ export to the CIZ loader should say which loader to use."""
+        path = tmp_path / "legacy.csv"
+        pl.DataFrame({"PERMNO": [1], "date": ["2020-01-01"], "PRC": [10.0]}).write_csv(path)
+
+        with pytest.raises(DataError, match="use load_crsp_csv instead"):
+            load_crsp_ciz(path)
+
+    def test_a_delisting_table_without_returns_is_refused(
+        self, ciz_files: tuple[Path, Path]
+    ) -> None:
+        """Silently returning nothing would reinstate the exit-at-last-price assumption without
+        saying so."""
+        daily, _ = ciz_files
+        bad = daily.parent / "bad_delist.csv"
+        pl.DataFrame({"PERMNO": [1], "DelReasonType": ["M"]}).write_csv(bad)
+
+        with pytest.raises(DataError, match="no recognisable delisting-return column"):
+            load_crsp_ciz(daily, delisting_path=bad)
+
+    def test_filters_excluding_everything_are_refused(self, ciz_files: tuple[Path, Path]) -> None:
+        daily, _ = ciz_files
+
+        with pytest.raises(DataError, match="not the numeric SHRCD/EXCHCD"):
+            load_crsp_ciz(daily, share_types=("NOPE",))
+
+    def test_the_dataset_shape_matches_the_legacy_loader(
+        self, ciz_files: tuple[Path, Path]
+    ) -> None:
+        """Everything downstream must be unaffected by which format the data arrived in."""
+        daily, delist = ciz_files
+
+        dataset = load_crsp_ciz(daily, delisting_path=delist)
+
+        assert isinstance(dataset, Dataset)
+        assert dataset.prices.shape == dataset.dollar_volume.shape == dataset.returns.shape
+        assert set(dataset.listings) <= set(dataset.assets)

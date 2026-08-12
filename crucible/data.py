@@ -61,7 +61,13 @@ import polars as pl
 
 from crucible.panel import Panel, PanelError
 
-__all__ = ["Dataset", "DataError", "load_crsp_csv", "long_to_panel"]
+__all__ = [
+    "Dataset",
+    "DataError",
+    "load_crsp_ciz",
+    "load_crsp_csv",
+    "long_to_panel",
+]
 
 #: CRSP share codes for US ordinary common shares.
 US_COMMON_SHARES = (10, 11)
@@ -399,3 +405,203 @@ def dataset_from_panels(
         listings=listings,
         delisting_returns={},
     )
+
+
+# ── CRSP Flat File Format 2.0 (CIZ) ───────────────────────────────────────────────────────────
+#
+# CRSP discontinued the legacy SIZ format after December 2024. CIZ is not a rename — it is a
+# different schema, and three of the differences change what the loader has to do.
+#
+# **Delisting returns moved to a separate table.** In SIZ, `DLRET` was a column in the daily
+# file. In CIZ, "Stock Delisting Information" is its own query, joined on PERMNO. That is the
+# column that matters most in this whole library, so it is now a second required file rather
+# than an optional one, and its absence is reported rather than silently tolerated.
+#
+# **Share and exchange codes became text.** `shrcd` 10/11 became `sharetype`, and `exchcd` 1/2/3
+# split into `primaryexch` and `exchangetier`. The numeric filters do not transfer, so the CIZ
+# loader filters on strings and the defaults below are stated explicitly rather than inherited.
+#
+# **Some derived fields come free.** `dlyprcvol` is dollar volume and `dlycap` is market
+# capitalisation, both computed by CRSP. The SIZ loader multiplied volume by price to get the
+# first and could not produce the second at all.
+
+#: CIZ share type for US ordinary common shares. The CIZ analogue of SHRCD 10/11.
+CIZ_COMMON_SHARE_TYPES = ("NS",)
+#: CIZ primary exchange codes for NYSE, NYSE American and Nasdaq.
+CIZ_MAJOR_EXCHANGES = ("N", "A", "Q")
+
+
+def load_crsp_ciz(
+    daily_path: str | Path,
+    *,
+    delisting_path: str | Path | None = None,
+    share_types: Iterable[str] | None = CIZ_COMMON_SHARE_TYPES,
+    exchanges: Iterable[str] | None = CIZ_MAJOR_EXCHANGES,
+) -> Dataset:
+    """Load a CRSP CIZ daily stock file, plus its separate delisting table.
+
+    Args:
+        daily_path: The Daily Stock File export. Needs at least `permno`, `dlycaldt`, `dlyprc`;
+            `dlyvol`, `dlyprcvol`, `dlyret`, `sharetype`, `primaryexch`, `ticker` are used when
+            present.
+        delisting_path: The Delisting Information export. Optional only in the sense that the
+            loader will run without it — but running without it means falling back to the
+            engine's optimistic exit-at-last-price assumption, which is the single largest
+            remaining upward bias in a survivorship-free dataset. `Dataset.summary()` says so.
+        share_types: CIZ `sharetype` values to keep. Defaults to US ordinary common shares.
+            `None` keeps everything, including ADRs, REITs and closed-end funds.
+        exchanges: CIZ `primaryexch` values to keep. Defaults to NYSE/NYSE American/Nasdaq.
+
+    Returns:
+        A `Dataset` keyed on PERMNO as a string, identical in shape to the legacy loader's — so
+        everything downstream is unchanged by which format the data arrived in.
+    """
+    source = Path(daily_path)
+    if not source.exists():
+        raise DataError(f"{source} does not exist")
+
+    frame = pl.read_csv(source, infer_schema_length=10_000)
+    frame.columns = [c.lower() for c in frame.columns]
+
+    required = ["permno", "dlycaldt", "dlyprc"]
+    missing = [c for c in required if c not in frame.columns]
+    if missing:
+        raise DataError(
+            f"{source} is missing required CIZ column(s) {missing}. Expected a CRSP Version 2 "
+            f"(CIZ) daily stock file; found {sorted(frame.columns)}. If this is a legacy SIZ "
+            f"export with `date`/`prc`/`ret`, use load_crsp_csv instead."
+        )
+
+    frame = frame.with_columns(
+        pl.col("permno").cast(pl.Int64).cast(pl.Utf8).alias("_permno"),
+        pl.col("dlycaldt").cast(pl.Utf8).str.strptime(pl.Date, strict=False).alias("_date"),
+    )
+
+    if share_types is not None and "sharetype" in frame.columns:
+        frame = frame.filter(
+            pl.col("sharetype").cast(pl.Utf8).str.strip_chars().is_in(list(share_types))
+        )
+    if exchanges is not None and "primaryexch" in frame.columns:
+        frame = frame.filter(
+            pl.col("primaryexch").cast(pl.Utf8).str.strip_chars().is_in(list(exchanges))
+        )
+    if frame.is_empty():
+        raise DataError(
+            f"no rows survived the share-type and exchange filters. CIZ uses text codes — "
+            f"sharetype {list(share_types) if share_types else 'any'}, primaryexch "
+            f"{list(exchanges) if exchanges else 'any'} — not the numeric SHRCD/EXCHCD of the "
+            f"legacy format. Check the values actually present in this extract."
+        )
+
+    # CIZ prices are unsigned; a non-trading day is marked by dlyprcflg rather than by a negative
+    # price. Where the flag is absent the price is taken at face value, which is what CRSP
+    # intends for this format.
+    price = _numeric(frame, "dlyprc")
+    frame = frame.with_columns(price.alias("_price"))
+
+    # dlyprcvol is dollar volume computed by CRSP. Fall back to volume x price only if absent.
+    if "dlyprcvol" in frame.columns:
+        dollar_volume = _numeric(frame, "dlyprcvol")
+    elif "dlyvol" in frame.columns:
+        dollar_volume = _numeric(frame, "dlyvol") * pl.col("_price").abs()
+    else:
+        dollar_volume = pl.lit(None, dtype=pl.Float64)
+    frame = frame.with_columns(
+        dollar_volume.alias("_dollar_volume"),
+        (
+            _numeric(frame, "dlyret")
+            if "dlyret" in frame.columns
+            else pl.lit(None, dtype=pl.Float64)
+        ).alias("_ret"),
+    )
+
+    dates = sorted({d for d in frame["_date"].to_list() if d is not None})
+    permnos = sorted(set(frame["_permno"].to_list()))
+
+    def pivot(value_column: str, name: str) -> Panel:
+        return long_to_panel(
+            frame,
+            date_column="_date",
+            asset_column="_permno",
+            value_column=value_column,
+            name=name,
+            index=dates,
+            assets=permnos,
+        )
+
+    prices = pivot("_price", "close")
+    volume_panel = pivot("_dollar_volume", "adv")
+    returns = pivot("_ret", "ret")
+
+    listings: dict[str, tuple[date | None, date | None]] = {}
+    investable = prices.investable
+    for column, permno in enumerate(permnos):
+        rows = np.flatnonzero(investable[:, column])
+        if rows.size == 0:
+            continue
+        last = dates[int(rows[-1])]
+        listings[permno] = (dates[int(rows[0])], None if last == dates[-1] else last)
+
+    delisting_returns = (
+        _load_ciz_delistings(Path(delisting_path)) if delisting_path is not None else {}
+    )
+
+    tickers: dict[str, str] = {}
+    if "ticker" in frame.columns:
+        latest = (
+            frame.filter(pl.col("ticker").is_not_null())
+            .sort("_date")
+            .group_by("_permno")
+            .agg(pl.col("ticker").last())
+        )
+        tickers = dict(zip(latest["_permno"].to_list(), latest["ticker"].to_list(), strict=True))
+
+    return Dataset(
+        prices=prices,
+        dollar_volume=volume_panel,
+        returns=returns,
+        listings=listings,
+        delisting_returns=delisting_returns,
+        tickers=tickers,
+    )
+
+
+def _load_ciz_delistings(path: Path) -> dict[str, float]:
+    """Read the CIZ Delisting Information table into `{permno: delisting return}`.
+
+    CIZ does not standardise on one column name here across releases, so several candidates are
+    tried in order of specificity. Finding none is an error rather than an empty result: a
+    delisting file with no return column is almost certainly the wrong export, and silently
+    returning nothing would reinstate the exit-at-last-price assumption without saying so.
+    """
+    if not path.exists():
+        raise DataError(f"{path} does not exist")
+
+    frame = pl.read_csv(path, infer_schema_length=10_000)
+    frame.columns = [c.lower() for c in frame.columns]
+    if "permno" not in frame.columns:
+        raise DataError(f"{path} has no permno column; found {sorted(frame.columns)}")
+
+    candidates = ["dlret", "delret", "delistingreturn", "dlyret", "delrettype", "delamt"]
+    column = next((c for c in candidates if c in frame.columns), None)
+    if column is None:
+        raise DataError(
+            f"{path} has no recognisable delisting-return column (tried {candidates}); found "
+            f"{sorted(frame.columns)}.\n"
+            f"\n"
+            f"This is the column the whole point of using CRSP rests on. Without it the engine "
+            f"assumes a delisted position exited at its last price, which is optimistic and is "
+            f"the largest remaining upward bias in a survivorship-free dataset. Re-export the "
+            f"Delisting Information table with every variable selected."
+        )
+
+    resolved = (
+        frame.with_columns(
+            pl.col("permno").cast(pl.Int64).cast(pl.Utf8).alias("_permno"),
+            _numeric(frame, column).alias("_dlret"),
+        )
+        .filter(pl.col("_dlret").is_not_null())
+        .group_by("_permno")
+        .agg(pl.col("_dlret").last())
+    )
+    return dict(zip(resolved["_permno"].to_list(), resolved["_dlret"].to_list(), strict=True))

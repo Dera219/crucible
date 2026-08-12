@@ -162,13 +162,23 @@ class Dataset:
     being inferred from where the price series happens to stop.
     """
 
+    #: Total-return adjusted price series. THIS is what the engine must use, because it
+    #: derives returns as pct_change of this panel. See `load_crsp_ciz` for why a raw price
+    #: panel here silently reproduces the split bug this library exists to catch.
     prices: Panel
     dollar_volume: Panel
     returns: Panel
+    #: Unadjusted price, as the vendor reported it. Only for screens that care about the actual
+    #: traded level — a penny stock is a penny stock regardless of how its history is adjusted.
+    #: Never use this to compute returns.
     #: `{permno: (first_tradable, last_tradable)}`
     listings: dict[str, tuple[date | None, date | None]]
     #: `{permno: realised return on delisting}`. Frequently large and negative.
     delisting_returns: dict[str, float]
+    #: Unadjusted price, as the vendor reported it. Only for screens that care about the actual
+    #: traded level — a penny stock is a penny stock regardless of how its history is adjusted.
+    #: Never use this to compute returns.
+    raw_prices: Panel | None = None
     #: `{permno: most recent ticker}`. A label only — never a key.
     tickers: dict[str, str] = field(default_factory=dict)
 
@@ -503,10 +513,35 @@ def load_crsp_ciz(
         )
 
     # CIZ prices are unsigned; a non-trading day is marked by dlyprcflg rather than by a negative
-    # price. Where the flag is absent the price is taken at face value, which is what CRSP
-    # intends for this format.
-    price = _numeric(frame, "dlyprc")
-    frame = frame.with_columns(price.alias("_price"))
+    # price. Where the flag is absent the price is taken at face value.
+    #
+    # But dlyprc is RAW and UNADJUSTED, and the engine derives returns as pct_change of the price
+    # panel — so handing it this column silently reproduces the exact split bug this library was
+    # built to catch. Verified against three known splits in the real extract:
+    #
+    #     AAPL  2020-08-28   499.23 -> 2020-08-31   129.04   DlyRet +0.0339
+    #     TSLA  2022-08-24   891.29 -> 2022-08-25   296.07   DlyRet -0.0035
+    #     NVDA  2024-06-07  1208.88 -> 2024-06-10   121.79   DlyRet +0.0075
+    #
+    # Naive pct_change would read those as -74.2%, -66.8% and -89.9%. CRSP's dlyret is correct
+    # throughout — it already accounts for splits, dividends and distributions — so the adjusted
+    # series is built by compounding it forward from each security's first observed price.
+    # Anything that needs the actual traded level (a penny-stock screen) uses raw_prices instead.
+    frame = frame.with_columns(_numeric(frame, "dlyprc").alias("_raw_price"))
+    if "dlyret" in frame.columns:
+        frame = frame.sort(["_permno", "_date"]).with_columns(
+            _numeric(frame, "dlyret").alias("_ret_raw")
+        )
+        frame = frame.with_columns(
+            (
+                pl.col("_raw_price").first().over("_permno")
+                * (1.0 + pl.col("_ret_raw").fill_null(0.0)).cum_prod().over("_permno")
+                / (1.0 + pl.col("_ret_raw").fill_null(0.0)).first().over("_permno")
+            ).alias("_price")
+        )
+    else:
+        # No return column: fall back to raw prices and say so, rather than pretending.
+        frame = frame.with_columns(pl.col("_raw_price").alias("_price"))
 
     # dlyprcvol is dollar volume computed by CRSP. Fall back to volume x price only if absent.
     if "dlyprcvol" in frame.columns:
@@ -538,7 +573,8 @@ def load_crsp_ciz(
             assets=permnos,
         )
 
-    prices = pivot("_price", "close")
+    prices = pivot("_price", "close_adjusted")
+    raw_prices = pivot("_raw_price", "close_raw")
     volume_panel = pivot("_dollar_volume", "adv")
     returns = pivot("_ret", "ret")
 
@@ -571,6 +607,7 @@ def load_crsp_ciz(
         returns=returns,
         listings=listings,
         delisting_returns=delisting_returns,
+        raw_prices=raw_prices,
         tickers=tickers,
     )
 

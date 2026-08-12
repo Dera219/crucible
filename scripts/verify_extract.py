@@ -140,7 +140,10 @@ def main(argv: list[str]) -> int:
         )
 
     rule("5. Unexplained single-day moves")
-    returns = data.prices.pct_change(1).values
+    # Use the vendor's own return series when it exists. Deriving returns from prices is what
+    # makes an unadjusted split look like a -74% day, and the point here is to find data
+    # defects, not to re-create one.
+    returns = data.returns.values if data.returns is not None else data.prices.pct_change(1).values
     with np.errstate(invalid="ignore"):
         extreme = np.abs(returns) > 0.5
     n_extreme = int(np.nansum(extreme))
@@ -154,12 +157,30 @@ def main(argv: list[str]) -> int:
             near_exit = window is not None and abs((data.prices.index[row] - window).days) <= 5  # type: ignore[operator]
             if not near_exit:
                 unexplained += 1
-        print(f"  {unexplained} of the first {min(400, n_extreme)} are NOT near a recorded exit")
-        if unexplained > n_extreme * 0.25:
+        # Compare a RATE against a rate. An earlier version compared `unexplained` — capped at
+        # the 400 rows sampled — against 25% of the full count, a threshold that can never be
+        # reached once there are more than 1,600 extreme moves. On the real extract it read
+        # "394 of the first 400 are NOT near a recorded exit" and then reported no defects.
+        sampled = min(400, n_extreme)
+        rate = unexplained / sampled
+        print(f"  {unexplained} of the first {sampled} are NOT near a recorded exit ({rate:.0%})")
+        if data.raw_prices is not None:
+            level = data.raw_prices.values
+            cheap = int(np.nansum(extreme & (level < 5.0)))
+            print(f"  {cheap} of {n_extreme} ({cheap / n_extreme:.0%}) are in stocks under $5")
+            if cheap / n_extreme > 0.6:
+                print("    concentration in low-priced names is the benign explanation:")
+                print("    microcaps genuinely move this much, and a survivorship-free universe")
+                print("    is full of them.")
+        if rate > 0.25 and (
+            data.raw_prices is None
+            or float(np.nansum(extreme & (data.raw_prices.values < 5.0))) / n_extreme <= 0.6
+        ):
             findings.append(
-                f"{unexplained} large moves are not explained by a delisting. The usual cause is "
-                f"an unadjusted split — the exact defect that made AAPL appear to fall 74.1% in "
-                f"one session on the previous vendor. Check a few by hand before trusting this."
+                f"{rate:.0%} of sampled large moves are not explained by a delisting, and they "
+                f"are not concentrated in low-priced names. The usual cause is an unadjusted "
+                f"split — the defect that made AAPL appear to fall 74.1% in one session on the "
+                f"previous vendor. Check a few by hand before trusting this."
             )
 
     rule("6. Non-trading days and data holes")

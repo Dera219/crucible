@@ -30,6 +30,7 @@ Verified properties:
 - **331 delisting returns worse than -50%**, worst -100% — the bankruptcies are present
 - Breadth 4,885–6,337 every year, no thin periods
 - Extreme moves are 91% concentrated in sub-$5 names — real microcaps, not corruption
+- **Adjusted prices reproduce CRSP's own `DlyRet` exactly** (0 disagreements >1bp, 15.0M obs)
 
 ## Open items, in priority order
 
@@ -68,7 +69,9 @@ hypothesis — that `fill_null(0.0)` on missing returns was to blame — was **w
 disagreements followed a missing return, which is what pointed at duplicates instead.
 
 Fixed by deduplicating on `(_permno, _date)` before compounding, so the return series and the
-pivot see identical rows.
+pivot see identical rows. **Verified across all 14,993,678 observations: zero disagreements above
+a basis point, max error 7.11e-15 — floating-point noise.** The progression was 128,781 → 1,940 →
+0.
 
 **Still worth doing:** the engine derives returns via `price_panel.pct_change(1)`. When the vendor
 supplies an authoritative return series, re-deriving it is pointless and is what created bug #16.

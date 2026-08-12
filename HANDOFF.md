@@ -1,0 +1,100 @@
+# Handoff — 2026-08-12
+
+State at the end of the session that loaded real CRSP data for the first time. Everything below
+is verified against the actual extract, not against fixtures.
+
+## Where things stand
+
+crucible is complete as a platform and has real data in it. **No strategy has been tested and no
+hypothesis has been registered** — deliberately, because a backtest run before the criteria are
+fixed is a trial that raises the deflation bar for whatever is eventually claimed.
+
+```
+315 tests · ruff + mypy strict clean · public at github.com/Dera219/crucible
+```
+
+## The data
+
+Two files in the repo root, both gitignored (`*.csv` is blocked — CRSP is licensed to UMD and
+publishing an extract could cost the university's access for everyone):
+
+| file | rows | contents |
+|---|---|---|
+| `crsp_daily.csv` | 23,101,820 | 2.0 GB · CIZ format · 2015-01-02 → 2025-12-31 |
+| `crsp_delist.csv` | 6,227 | delisting table with `DelRet` |
+
+Loads in ~206s into `(2766, 10551)` panels. Median breadth **4,984 names/day**.
+
+Verified properties:
+- **4,205 securities delisted in-sample**, 3.6%/yr attrition — survivorship-free is real
+- **331 delisting returns worse than -50%**, worst -100% — the bankruptcies are present
+- Breadth 4,885–6,337 every year, no thin periods
+- Extreme moves are 91% concentrated in sub-$5 names — real microcaps, not corruption
+
+## Open items, in priority order
+
+### 1. The mechanism — the only real blocker
+
+`Hypothesis` will not construct without a ≥120-character mechanism naming who is on the other
+side of the trade and why they lose money to you. This is Chidera's to write and has been the
+gating item all along. `scripts/example_hypothesis.py` shows the shape using a deliberately
+decayed effect so it cannot be mistaken for a recommendation.
+
+### 2. ETF contamination in the universe
+
+`sharetype='NS'` does **not** exclude ETFs, unlike legacy `SHRCD 10/11`. SPY, IWM, ARKK and QQQ
+all carry it. Filtering to exchanges N/A/Q removed most (Arca and Cboe BZX are gone) but
+Nasdaq-listed funds remain.
+
+**Fix:** re-pull with four more columns — `securitytype`, `securitysubtype`, `usincflg`,
+`issuertype`. The Rerun link restores every other setting:
+`/pages/get-data/center-research-security-prices-crsp/annual-update/stock-version-2/daily-stock-file/?saved_query=7647821`
+
+Then extend `load_crsp_ciz` to filter on them. The documented CIZ equivalent of US common stock is
+roughly `securitytype='EQTY' AND securitysubtype='COM' AND usincflg='Y' AND issuertype IN
+('ACOR','CORP')` — **verify against the actual values in the extract before trusting that**, the
+way the exchange codes were identified empirically rather than assumed.
+
+### 3. Residual return disagreements — unfinished investigation
+
+After the split fix, adjusted `pct_change` disagrees with CRSP's `DlyRet` on **1,940 of 15.0M**
+observations (0.013%), with one **max error of 0.98**. An investigation was running at handoff and
+did not complete; its script is the last block in the session and can be re-run.
+
+Working hypothesis: the compounding uses `fill_null(0.0)` on missing returns, which freezes the
+adjusted series while the raw price moves on, so divergence accumulates at securities with gaps.
+
+**Consider the better fix rather than patching this:** the engine derives returns via
+`price_panel.pct_change(1)`. When the vendor supplies an authoritative return series, re-deriving
+it is pointless and is what created bug #16 in the first place. Adding an optional `returns=`
+parameter to `backtest()` would remove the entire class of error.
+
+### 4. Universe churn
+
+The verifier's hysteresis warning fired correctly: **3.53 membership changes per period** on the
+default top-1000 screen over a ~5,000-name universe. The default entry/exit band is too narrow at
+this breadth. Widen `entry_rank`/`exit_rank` before any real run.
+
+## The two bugs found in the last hour, for context on how to work here
+
+**#16 — the split bug, reproduced in my own loader.** `DlyPrc` is raw. The engine derives returns
+from it. AAPL read as -74.15% on its 2020 split, TSLA -66.78%, NVDA -89.93%. 3,244 split events
+across the panel. This is the Alpaca defect that `apex/data/splits.py` exists to catch, on a
+vendor that supplied the right answer in `DlyRet` and which the loader ignored.
+
+**#15 — the verifier that hid it.** Compared a count capped at 400 against 25% of the full
+11,478, a threshold that can never be reached. It printed "394 of the first 400 are NOT near a
+recorded exit" and then reported "No defects found."
+
+Both are the same shape as the other fourteen: **correct on a small fixture, silently wrong on
+real data.** The technique that keeps working is to check against something with a known answer —
+a planted signal, an accounting identity, a documented corporate action — rather than against
+whether the number looks reasonable.
+
+## Do not
+
+- Run a signal search before a hypothesis is registered. It spends trial budget on curiosity and
+  the deflation arithmetic is unforgiving: against 50 trials, an annualised Sharpe near 1.27 needs
+  ~20 years of daily data to separate from luck.
+- Commit the extract. `.gitignore` blocks it; do not `git add -f`.
+- Enter WRDS credentials on Chidera's behalf.

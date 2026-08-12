@@ -305,3 +305,75 @@ class TestCostModelValidation:
     def test_invalid_parameters_are_refused(self, field: str, value: float) -> None:
         with pytest.raises(ValueError, match=field):
             CostModel(**{field: value})  # type: ignore[arg-type]
+
+
+class TestTheDecompositionAddsUp:
+    """Found by fuzzing `net == gross - costs` over 3000 randomised backtests: it failed on 885
+    of them. The delisting drag is a third term and was reported in neither column, so a run
+    dominated by one bankruptcy showed "gross 0.00% - costs 0.01%" against an actual -40%."""
+
+    @staticmethod
+    def with_a_delisting() -> Panel:
+        values = np.full((20, 2), 100.0)
+        values[10:, 1] = np.nan
+        return mk(values)
+
+    def test_net_equals_gross_plus_drag_minus_costs(self) -> None:
+        prices = self.with_a_delisting()
+
+        result = backtest(
+            prices.with_values(np.full((20, 2), 0.5)),
+            prices,
+            costs=CostModel(),
+            delisting_return={"A1": -0.80},
+        )
+
+        np.testing.assert_allclose(
+            result.net_returns,
+            result.gross_returns + result.delisting_drag - result.costs.total,
+            atol=1e-12,
+        )
+
+    def test_the_drag_is_exposed_rather_than_hidden(self) -> None:
+        prices = self.with_a_delisting()
+
+        result = backtest(
+            prices.with_values(np.full((20, 2), 0.5)),
+            prices,
+            costs=CostModel(),
+            delisting_return={"A1": -0.80},
+        )
+
+        assert result.delisting_drag.sum() == pytest.approx(-0.40, abs=1e-9)
+        assert "delistings -40.00%" in result.summary()
+
+    def test_a_run_without_delistings_has_no_drag(self) -> None:
+        prices = random_prices()
+        weights = cs_scale(cs_demean(cs_rank(prices.pct_change(20))))
+
+        result = backtest(weights, prices, costs=CostModel())
+
+        assert not result.delisting_drag.any()
+        assert "delistings" not in result.summary()
+
+    @pytest.mark.parametrize("seed", range(12))
+    def test_the_identity_holds_under_randomised_inputs(self, seed: int) -> None:
+        rng = np.random.default_rng(seed)
+        n_times, n_assets = 60, 6
+        values = np.cumprod(1 + rng.normal(0, 0.02, (n_times, n_assets)), axis=0) * 100
+        values[int(rng.integers(30, 55)) :, int(rng.integers(0, n_assets))] = np.nan
+        prices = mk(values)
+
+        result = backtest(
+            prices.with_values(rng.normal(0, 0.3, (n_times, n_assets))),
+            prices,
+            costs=CostModel(spread_bps=float(rng.uniform(0, 20))),
+            delisting_return=float(rng.uniform(-1, 0)),
+        )
+
+        np.testing.assert_allclose(
+            result.net_returns,
+            result.gross_returns + result.delisting_drag - result.costs.total,
+            atol=1e-12,
+        )
+        assert result.equity[-1] == pytest.approx(float(np.prod(1 + result.net_returns)), rel=1e-7)

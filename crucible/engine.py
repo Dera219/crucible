@@ -83,6 +83,13 @@ class BacktestResult:
 
     net_returns: Array
     gross_returns: Array
+    #: Return contributed by delistings, per period. A THIRD term, not folded into gross.
+    #:
+    #: Without it the reported decomposition silently fails to add up: a run whose result is
+    #: dominated by one bankruptcy reported "gross 0.00% - costs 0.01%" against an actual -40%,
+    #: because the drag appeared in neither column. Found by fuzzing the identity
+    #: net == gross - costs, which failed on 885 of 3000 randomised backtests.
+    delisting_drag: Array
     equity: Array
     held_weights: Array
     turnover: Array
@@ -130,22 +137,24 @@ class BacktestResult:
         drawdown = float(np.min(np.where(peak > 0, self.equity / peak - 1, 0.0)))
         gross_total = float(np.nansum(self.gross_returns))
         cost_total = float(np.nansum(self.costs.total))
+        drag_total = float(np.nansum(self.delisting_drag))
 
         turnover = float(np.nanmean(self.turnover)) * periods_per_year
         lines = [
             f"return {self.total_return:+.2%} | sharpe {sharpe:.2f} | "
             f"maxDD {drawdown:.2%} | turnover {turnover:.1f}x/yr",
-            f"  gross {gross_total:+.2%} − costs {cost_total:.2%} "
-            f"({cost_total / abs(gross_total):.0%} of gross)"
-            if gross_total
-            else f"  costs {cost_total:.2%}",
+            f"  gross {gross_total:+.2%} − costs {cost_total:.2%}"
+            + (f" + delistings {drag_total:+.2%}" if drag_total else "")
+            + (f"  ({cost_total / abs(gross_total):.0%} of gross)" if gross_total else ""),
             f"  {self.costs.summary()}",
         ]
         if self.delisting_events:
-            lines.append(
-                f"  {self.delisting_events} delisting event(s) assumed to exit flat — "
-                f"optimistic if any were distressed"
+            assumed = (
+                "assumed to exit flat — optimistic if any were distressed"
+                if not drag_total
+                else f"cost {drag_total:+.2%} in total"
             )
+            lines.append(f"  {self.delisting_events} delisting event(s), {assumed}")
         return "\n".join(lines)
 
 
@@ -246,6 +255,7 @@ def backtest(
     gross = np.zeros(n_times)
     net = np.zeros(n_times)
     turnover = np.zeros(n_times)
+    drag_series = np.zeros(n_times)
     held_history = np.zeros((n_times, n_assets))
     spread_cost = np.zeros(n_times)
     impact_cost = np.zeros(n_times)
@@ -269,6 +279,7 @@ def backtest(
         if gone.any():
             delistings += int(gone.sum())
             drag = float(np.sum(held[gone] * per_asset[gone]))
+            drag_series[t] = drag
             held = np.where(gone, 0.0, held)
 
         # Rebalance from DRIFTED holdings to target. This difference is the real turnover.
@@ -329,6 +340,7 @@ def backtest(
     return BacktestResult(
         net_returns=net,
         gross_returns=gross,
+        delisting_drag=drag_series,
         equity=equity,
         held_weights=held_history,
         turnover=turnover,

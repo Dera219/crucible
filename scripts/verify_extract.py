@@ -44,8 +44,21 @@ from pathlib import Path
 
 import numpy as np
 
-from crucible.data import DataError, load_crsp_csv
+from crucible.data import DataError, Dataset, load_crsp_ciz, load_crsp_csv
 from crucible.universe import Universe, liquidity_screen, listing_mask
+
+
+def _load(daily: Path, delisting: Path | None) -> tuple[Dataset, str]:
+    """Load either CRSP format, choosing by the columns actually present.
+
+    CIZ is tried first because it is the current format; legacy SIZ was retired after December
+    2024 and any new extract will be CIZ. Guessing from the filename would be wrong the first
+    time somebody renames a file.
+    """
+    header = daily.read_text(encoding="utf-8", errors="replace").split("\n", 1)[0].lower()
+    if "dlycaldt" in header:
+        return load_crsp_ciz(daily, delisting_path=delisting), "CIZ (Flat File Format 2.0)"
+    return load_crsp_csv(daily), "legacy SIZ (retired after 2024-12)"
 
 
 def rule(title: str) -> None:
@@ -58,12 +71,14 @@ def main(argv: list[str]) -> int:
         return 2
 
     path = Path(argv[1])
-    print(f"reading {path} …")
+    delisting = Path(argv[2]) if len(argv) > 2 else None
+    print(f"reading {path}" + (f" + {delisting}" if delisting else "") + " …")
     try:
-        data = load_crsp_csv(path)
+        data, fmt = _load(path, delisting)
     except DataError as exc:
         print(f"\nrefused: {exc}")
         return 1
+    print(f"format: {fmt}")
 
     findings: list[str] = []
 

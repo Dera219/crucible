@@ -124,22 +124,31 @@ def long_to_panel(
     rows = (
         list(index)
         if index is not None
-        else [d.date() if isinstance(d, datetime) else d for d in pivoted[date_column].to_list()]
+        else [_as_date(d) for d in pivoted[date_column].to_list()]
     )
 
-    lookup = {
-        (d.date() if isinstance(d, datetime) else d): i
-        for i, d in enumerate(pivoted[date_column].to_list())
-    }
-    values = np.full((len(rows), len(columns)), np.nan)
-    for column_index, asset in enumerate(columns):
-        if asset not in found_assets:
-            continue
-        series = pivoted[asset].to_numpy()
-        for row_index, when in enumerate(rows):
-            source = lookup.get(when)
-            if source is not None:
-                values[row_index, column_index] = series[source]
+    # Reindex inside polars rather than in Python. An earlier version walked
+    # dates x assets in a nested loop, which is invisible on a 200-row fixture and
+    # impossible on a real extract: 2,770 sessions x 16,915 securities is 47 million
+    # iterations per field, and there are three fields. The pivot below does the same
+    # work in well under a second.
+    missing = [a for a in columns if a not in found_assets]
+    if missing:
+        # Securities absent from this field keep their column, as all-NaN.
+        pivoted = pivoted.with_columns(
+            [pl.lit(None, dtype=pl.Float64).alias(a) for a in missing]
+        )
+
+    wanted = pl.DataFrame({date_column: rows}).with_columns(
+        pl.col(date_column).cast(pivoted[date_column].dtype)
+    )
+    aligned = wanted.join(pivoted, on=date_column, how="left")
+
+    values = (
+        aligned.select([pl.col(a).cast(pl.Float64, strict=False) for a in columns]).to_numpy()
+        if columns
+        else np.empty((len(rows), 0), dtype=np.float64)
+    )
 
     return Panel(values=values, index=tuple(rows), assets=tuple(columns), name=name or value_column)
 

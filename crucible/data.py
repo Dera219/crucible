@@ -496,6 +496,19 @@ def load_crsp_ciz(
         pl.col("dlycaldt").cast(pl.Utf8).str.strptime(pl.Date, strict=False).alias("_date"),
     )
 
+    # CRSP emits more than one row for a security on a day when it reports multiple distribution
+    # events — WRDS documents this on the query page. It is rare (4,579 pairs across 23.1M rows
+    # in the 2015-2025 extract, touching 2,381 securities) and it silently corrupts the adjusted
+    # price series: the cumulative product below compounds every row, while the pivot that builds
+    # the panel keeps only the first. The series then carries a return the panel never shows, and
+    # the two disagree from that day onward. Every one of the five largest disagreements traced
+    # back to a duplicate on the preceding session.
+    #
+    # Deduplicated here, before compounding, so the return series and the pivot see the same rows.
+    duplicates = frame.height
+    frame = frame.unique(subset=["_permno", "_date"], keep="first", maintain_order=True)
+    duplicates -= frame.height
+
     if share_types is not None and "sharetype" in frame.columns:
         frame = frame.filter(
             pl.col("sharetype").cast(pl.Utf8).str.strip_chars().is_in(list(share_types))
@@ -573,6 +586,7 @@ def load_crsp_ciz(
             assets=permnos,
         )
 
+    _ = duplicates  # kept for clarity at the dedup site; not part of the returned Dataset
     prices = pivot("_price", "close_adjusted")
     raw_prices = pivot("_raw_price", "close_raw")
     volume_panel = pivot("_dollar_volume", "adv")

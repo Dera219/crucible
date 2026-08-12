@@ -55,19 +55,25 @@ roughly `securitytype='EQTY' AND securitysubtype='COM' AND usincflg='Y' AND issu
 ('ACOR','CORP')` — **verify against the actual values in the extract before trusting that**, the
 way the exchange codes were identified empirically rather than assumed.
 
-### 3. Residual return disagreements — unfinished investigation
+### 3. Residual return disagreements — RESOLVED (bug #17)
 
-After the split fix, adjusted `pct_change` disagrees with CRSP's `DlyRet` on **1,940 of 15.0M**
-observations (0.013%), with one **max error of 0.98**. An investigation was running at handoff and
-did not complete; its script is the last block in the session and can be re-run.
+The 1,940 disagreements were **duplicate `(PERMNO, date)` rows**, which WRDS documents on the
+query page: CRSP emits more than one row when a security reports multiple distribution events on
+a day. 4,579 pairs across 23.1M rows, touching 2,381 securities.
 
-Working hypothesis: the compounding uses `fill_null(0.0)` on missing returns, which freezes the
-adjusted series while the raw price moves on, so divergence accumulates at securities with gaps.
+`cum_prod` compounded every row while the pivot's `aggregate_function="first"` kept only one, so
+the adjusted series carried a return the panel never showed and the two diverged from that day
+onward. All five largest disagreements traced to a duplicate on the preceding session. The first
+hypothesis — that `fill_null(0.0)` on missing returns was to blame — was **wrong**: zero of the
+disagreements followed a missing return, which is what pointed at duplicates instead.
 
-**Consider the better fix rather than patching this:** the engine derives returns via
-`price_panel.pct_change(1)`. When the vendor supplies an authoritative return series, re-deriving
-it is pointless and is what created bug #16 in the first place. Adding an optional `returns=`
-parameter to `backtest()` would remove the entire class of error.
+Fixed by deduplicating on `(_permno, _date)` before compounding, so the return series and the
+pivot see identical rows.
+
+**Still worth doing:** the engine derives returns via `price_panel.pct_change(1)`. When the vendor
+supplies an authoritative return series, re-deriving it is pointless and is what created bug #16.
+An optional `returns=` parameter on `backtest()` would remove the whole class of error rather than
+keep correcting for it.
 
 ### 4. Universe churn
 

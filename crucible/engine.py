@@ -42,20 +42,27 @@ full period more conservative than documented — and made a planted signal with
 measure at 0.008. A diagnostic that cannot find an edge you put there yourself is worse than no
 diagnostic.
 
-## 3. Delisting is an assumption, not a fact
+## 3. Delisting is an assumption, not a fact — and it is permanent
 
-When a held asset becomes non-investable, this engine assumes you exited at the last known price
-— `delisting_return=0.0`. That is **optimistic**, and deliberately visible rather than buried: real
-delistings are frequently bankruptcies, and a strategy that systematically buys distressed names
-would show none of the loss.
+When a held asset stops being investable **for good**, this engine assumes you exited at the last
+known price unless told otherwise. That is optimistic and deliberately visible: real delistings
+are frequently bankruptcies, and a strategy that systematically buys distressed names would show
+none of the loss. `crucible.data` carries CRSP's DLRET so the vendor's own record can be passed
+in instead of assumed, which is most of the reason to pay for survivorship-free data.
 
-`BacktestResult.delisting_events` counts how often it happened. If that number is large, the
-default is doing real work in your result and you should set `delisting_return` to something
-punitive and re-run.
+Permanence matters. A security that does not trade for a session and resumes has not delisted —
+you still hold it, you simply cannot trade it that day. An earlier version treated every gap as
+an exit, which inflated the event count and, far worse, applied the delisting return once per
+gap: a name with intermittent non-trading days and a DLRET of -0.85 would be charged -85%
+several times over.
+
+`BacktestResult.delisting_events` counts genuine exits. If that number is large, the assumption
+is doing real work in your result.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
 
@@ -150,7 +157,7 @@ def backtest(
     dollar_volume: Panel | None = None,
     volatility: Panel | None = None,
     execution_lag: int = 1,
-    delisting_return: float = 0.0,
+    delisting_return: float | Mapping[str, float] = 0.0,
     initial_equity: float = 1.0,
 ) -> BacktestResult:
     """Run target weights against realised prices.
@@ -170,8 +177,13 @@ def backtest(
         execution_lag: Periods between the signal's timestamp and the start of the return it
             earns. 1 means the signal at *t* earns *t* to *t+1* — the convention. 2 means it
             earns *t+1* to *t+2*, which is what most people can actually execute. Run both.
-        delisting_return: Return applied when a held asset becomes non-investable. The 0.0
-            default assumes you exited at the last known price, which is optimistic.
+        delisting_return: Return applied when a held asset becomes non-investable. A single
+            float applies to every asset; a mapping supplies per-asset values, which is what
+            `Dataset.delisting_returns` carries from CRSP's DLRET. Assets absent from the
+            mapping fall back to 0.0. The scalar default assumes you exited at the last known
+            price, which is optimistic and is the largest source of upward bias remaining in a
+            survivorship-free dataset — using the vendor's recorded value instead is most of
+            the reason to pay for one.
         initial_equity: Starting capital.
 
     Returns:
@@ -196,6 +208,13 @@ def backtest(
         (volume_panel,) = align(dollar_volume.select(price_panel.assets))
         volume_values = volume_panel.values
 
+    if isinstance(delisting_return, Mapping):
+        per_asset = np.array(
+            [float(delisting_return.get(a, 0.0)) for a in price_panel.assets], dtype=np.float64
+        )
+    else:
+        per_asset = np.full(len(price_panel.assets), float(delisting_return))
+
     n_times, n_assets = price_panel.shape
     if n_times <= execution_lag:
         raise PanelError(f"need more than execution_lag={execution_lag} timestamps, got {n_times}")
@@ -206,6 +225,16 @@ def backtest(
     # below, so lag=1 needs no shift at all. Shifting by lag made every result a full period
     # more conservative than documented.
     targets = np.nan_to_num(weights_panel.shift(execution_lag - 1).values, nan=0.0)
+    # A delisting is PERMANENT. An asset that stops trading for a day and resumes has not
+    # delisted — you still hold it, you simply cannot trade it that session. Treating every gap
+    # as an exit both inflates the event count and, far worse, applies the delisting return
+    # once per gap: a name with intermittent non-trading days and a DLRET of -0.85 would be
+    # charged -85% several times over. Found by loading CRSP data where negative prices mark
+    # non-trading sessions.
+    last_investable = np.where(
+        investable.any(axis=0), investable.shape[0] - 1 - investable[::-1].argmax(axis=0), -1
+    )
+
     targets = np.where(investable, targets, 0.0)
 
     vol_values = np.nan_to_num(volatility_panel.values, nan=0.0)
@@ -236,10 +265,10 @@ def backtest(
         # earlier version applied it to a local and then rebuilt the equity curve without it,
         # which made `delisting_return=-1.0` indistinguishable from exiting flat.
         drag = 0.0
-        gone = (held != 0) & ~investable[t]
+        gone = (held != 0) & ~investable[t] & (t > last_investable)
         if gone.any():
             delistings += int(gone.sum())
-            drag = float(np.sum(held[gone]) * delisting_return)
+            drag = float(np.sum(held[gone] * per_asset[gone]))
             held = np.where(gone, 0.0, held)
 
         # Rebalance from DRIFTED holdings to target. This difference is the real turnover.
@@ -274,6 +303,8 @@ def backtest(
             break
 
         period_return = asset_returns[t + 1]
+        # A position carried through a temporary gap earns nothing that session rather than
+        # being liquidated: no price means no trade, not no position.
         usable = np.isfinite(period_return)
         gross_next = float(np.sum(held[usable] * period_return[usable]))
         gross[t + 1] = gross_next

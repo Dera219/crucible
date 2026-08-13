@@ -328,15 +328,26 @@ CIZ_SCHEMA = {
     "ShareType": pl.Utf8,
     "PrimaryExch": pl.Utf8,
     "Ticker": pl.Utf8,
+    "SecurityType": pl.Utf8,
+    "SecuritySubType": pl.Utf8,
+    "IssuerType": pl.Utf8,
+    "USIncFlg": pl.Utf8,
 }
 
-#: permno offset -> (sharetype, primaryexch). CIZ uses text codes, not numeric SHRCD/EXCHCD.
+#: permno offset -> (sharetype, primaryexch, securitytype, securitysubtype, issuertype,
+#: usincflg). CIZ uses text codes, not numeric SHRCD/EXCHCD. The last three securities carry
+#: sharetype 'NS' on a major exchange — invisible to the share-type and exchange filters, which
+#: is exactly how SPY survived the first extract — and are excluded only by the classification
+#: columns.
 CIZ_SECURITIES = [
-    ("NS", "N"),  # ordinary common, NYSE
-    ("NS", "Q"),  # ordinary common, Nasdaq — delists mid-sample
-    ("NS", "N"),
-    ("ADR", "N"),  # ADR — filtered out by share type
-    ("NS", "X"),  # unlisted venue — filtered out by exchange
+    ("NS", "N", "EQTY", "COM", "CORP", "Y"),  # ordinary common, NYSE
+    ("NS", "Q", "EQTY", "COM", "CORP", "Y"),  # ordinary common, Nasdaq — delists mid-sample
+    ("NS", "N", "EQTY", "COM", "CORP", "Y"),
+    ("ADR", "N", "EQTY", "COM", "CORP", "N"),  # ADR — filtered out by share type
+    ("NS", "X", "EQTY", "COM", "CORP", "Y"),  # unlisted venue — filtered out by exchange
+    ("NS", "Q", "FUND", "ETF", "ACOR", "Y"),  # Nasdaq-listed ETF — the QQQ case
+    ("NS", "N", "EQTY", "COM", "REIT", "Y"),  # REIT — SHRCD 10/11 excluded these too
+    ("NS", "N", "EQTY", "COM", "CORP", "N"),  # foreign-incorporated on NYSE
 ]
 CIZ_EXIT_ROW = 120
 
@@ -346,7 +357,9 @@ def ciz_files(tmp_path: Path) -> tuple[Path, Path]:
     rng = np.random.default_rng(4)
     dates = [date(2023, 1, 1) + timedelta(days=i) for i in range(200)]
     rows = []
-    for offset, (share_type, exchange) in enumerate(CIZ_SECURITIES):
+    for offset, (share_type, exchange, sec_type, sub_type, issuer, us_inc) in enumerate(
+        CIZ_SECURITIES
+    ):
         prices = 100 * np.cumprod(1 + rng.normal(0.0003, 0.015, 200))
         exit_at = CIZ_EXIT_ROW if offset == 1 else None
         for i, when in enumerate(dates):
@@ -364,6 +377,10 @@ def ciz_files(tmp_path: Path) -> tuple[Path, Path]:
                     "ShareType": share_type,
                     "PrimaryExch": exchange,
                     "Ticker": f"T{offset}",
+                    "SecurityType": sec_type,
+                    "SecuritySubType": sub_type,
+                    "IssuerType": issuer,
+                    "USIncFlg": us_inc,
                 }
             )
     daily = tmp_path / "ciz_daily.csv"
@@ -402,9 +419,50 @@ class TestCIZFormat:
     def test_filters_can_be_disabled(self, ciz_files: tuple[Path, Path]) -> None:
         daily, _ = ciz_files
 
-        dataset = load_crsp_ciz(daily, share_types=None, exchanges=None)
+        dataset = load_crsp_ciz(
+            daily, share_types=None, exchanges=None, common_shares_only=False
+        )
 
         assert {"20003", "20004"} <= set(dataset.assets)
+
+    def test_classification_excludes_what_sharetype_cannot(
+        self, ciz_files: tuple[Path, Path]
+    ) -> None:
+        """SPY, QQQ, IWM and ARKK all carry sharetype 'NS' on a major exchange — the share-type
+        and exchange filters pass every one of them. Only securitytype/securitysubtype/
+        issuertype/usincflg separate an ETF, a REIT, or a foreign-incorporated issuer from
+        common stock, which is why the classification filter is on by default and why the
+        documented 'ACOR' issuer type (what the ETFs carry) is not in the allowed set."""
+        daily, _ = ciz_files
+
+        assets = set(load_crsp_ciz(daily).assets)
+
+        assert "20005" not in assets  # Nasdaq-listed ETF
+        assert "20006" not in assets  # REIT
+        assert "20007" not in assets  # foreign-incorporated on NYSE
+        assert {"20000", "20001", "20002"} <= assets
+
+    def test_refuses_to_claim_fund_free_without_the_classification_columns(
+        self, tmp_path: Path
+    ) -> None:
+        """An extract without the classification columns cannot prove it is fund-free, and
+        skipping the filter silently is how the contamination survived the first time."""
+        rows = pl.DataFrame(
+            {
+                "PERMNO": [30000] * 3,
+                "DlyCalDt": ["2023-01-02", "2023-01-03", "2023-01-04"],
+                "DlyPrc": [10.0, 10.1, 10.2],
+                "ShareType": ["NS"] * 3,
+                "PrimaryExch": ["Q"] * 3,
+            }
+        )
+        daily = tmp_path / "old_extract.csv"
+        rows.write_csv(daily)
+
+        with pytest.raises(DataError, match="securitytype"):
+            load_crsp_ciz(daily)
+
+        assert "30000" in load_crsp_ciz(daily, common_shares_only=False).assets
 
     def test_the_delisting_return_comes_from_the_separate_table(
         self, ciz_files: tuple[Path, Path]

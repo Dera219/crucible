@@ -20,17 +20,18 @@ publishing an extract could cost the university's access for everyone):
 
 | file | rows | contents |
 |---|---|---|
-| `crsp_daily.csv` | 23,101,820 | 2.0 GB · CIZ format · 2015-01-02 → 2025-12-31 |
+| `crsp_daily.csv` | 23,101,820 | 2.4 GB · CIZ format + classification columns · 2015-01-02 → 2025-12-31 |
 | `crsp_delist.csv` | 6,227 | delisting table with `DelRet` |
 
-Loads in ~206s into `(2766, 10551)` panels. Median breadth **4,984 names/day**.
+Loads into `(2766, 6635)` panels after the common-stock filter. Median breadth **3,716
+names/day** — US common stock only; ETFs, CEFs, REITs and ADRs are excluded by
+`CIZ_COMMON_STOCK_FILTER` (see item 2).
 
 Verified properties:
-- **4,205 securities delisted in-sample**, 3.6%/yr attrition — survivorship-free is real
+- **2,964 securities delisted in-sample**, 4.1%/yr attrition — inside the typical 4-8% band
 - **331 delisting returns worse than -50%**, worst -100% — the bankruptcies are present
-- Breadth 4,885–6,337 every year, no thin periods
-- Extreme moves are 91% concentrated in sub-$5 names — real microcaps, not corruption
-- **Adjusted prices reproduce CRSP's own `DlyRet` exactly** (0 disagreements >1bp, 15.0M obs)
+- SPY, QQQ, IWM, ARKK confirmed absent from the loaded panel
+- **Adjusted prices reproduce CRSP's own `DlyRet` exactly** (0 disagreements >1bp)
 
 ## Open items, in priority order
 
@@ -41,20 +42,26 @@ side of the trade and why they lose money to you. This is Chidera's to write and
 gating item all along. `scripts/example_hypothesis.py` shows the shape using a deliberately
 decayed effect so it cannot be mistaken for a recommendation.
 
-### 2. ETF contamination in the universe
+### 2. ETF contamination in the universe — RESOLVED
 
-`sharetype='NS'` does **not** exclude ETFs, unlike legacy `SHRCD 10/11`. SPY, IWM, ARKK and QQQ
-all carry it. Filtering to exchanges N/A/Q removed most (Arca and Cboe BZX are gone) but
-Nasdaq-listed funds remain.
+Re-pulled 2026-08-12 with the four classification columns (same 23,101,820 rows, Rerun link for
+any future pull: `...daily-stock-file/?saved_query=7648132`). `load_crsp_ciz` now applies
+`CIZ_COMMON_STOCK_FILTER` — `securitytype='EQTY' AND securitysubtype='COM' AND
+issuertype='CORP' AND usincflg='Y'` — by default, and **refuses to load an extract missing those
+columns** rather than silently skipping the filter, because silent-skip is how the contamination
+survived `sharetype`.
 
-**Fix:** re-pull with four more columns — `securitytype`, `securitysubtype`, `usincflg`,
-`issuertype`. The Rerun link restores every other setting:
-`/pages/get-data/center-research-security-prices-crsp/annual-update/stock-version-2/daily-stock-file/?saved_query=7647821`
+**The instruction to verify empirically before trusting the docs was load-bearing.** The
+documented guess included `issuertype='ACOR'` — which is what every probed ETF carries (SPY,
+QQQ, IWM, ARKK are all FUND/ETF/ACOR). Trusting it would have excluded nothing. The cross-tab
+on the real extract separates cleanly: common stock EQTY/COM/CORP, funds FUND/{ETF,CEF}/ACOR,
+REITs carry issuertype REIT inside EQTY/COM, ADRs show usincflg N. Keeping CORP+Y reproduces
+what legacy SHRCD 10/11 excluded.
 
-Then extend `load_crsp_ciz` to filter on them. The documented CIZ equivalent of US common stock is
-roughly `securitytype='EQTY' AND securitysubtype='COM' AND usincflg='Y' AND issuertype IN
-('ACOR','CORP')` — **verify against the actual values in the extract before trusting that**, the
-way the exchange codes were identified empirically rather than assumed.
+Verified on the loaded panel: SPY (84398), QQQ (86755), IWM (88222), ARKK (14948) all absent.
+The universe fell from 10,551 securities / 4,974 median names/day to **6,635 / 3,716** — the
+old panel was ~1,250 funds, REITs and ADRs deep. Attrition *rose* to 4.1%/yr (funds rarely
+delist, so they were diluting it into the suspicious range).
 
 ### 3. Residual return disagreements — RESOLVED (bug #17)
 

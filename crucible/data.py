@@ -444,10 +444,25 @@ def dataset_from_panels(
 # capitalisation, both computed by CRSP. The SIZ loader multiplied volume by price to get the
 # first and could not produce the second at all.
 
-#: CIZ share type for US ordinary common shares. The CIZ analogue of SHRCD 10/11.
+#: CIZ share type for US ordinary common shares. The CIZ analogue of SHRCD 10/11 — but NOT a
+#: sufficient one: SPY, QQQ, IWM and ARKK all carry 'NS' too. The classification filter below is
+#: what actually excludes funds.
 CIZ_COMMON_SHARE_TYPES = ("NS",)
 #: CIZ primary exchange codes for NYSE, NYSE American and Nasdaq.
 CIZ_MAJOR_EXCHANGES = ("N", "A", "Q")
+
+#: The CIZ classification of US common stock, verified empirically against the 2015-2025 extract
+#: rather than taken from documentation — the documented guess included issuertype 'ACOR', which
+#: is what every probed ETF carries (SPY, QQQ, IWM, ARKK: FUND/ETF/ACOR). The cross-tab separates
+#: cleanly: common stock is EQTY/COM/CORP, funds are FUND/{ETF,CEF}/ACOR, REITs carry issuertype
+#: 'REIT' inside EQTY/COM. Keeping CORP only and usincflg 'Y' reproduces what legacy SHRCD 10/11
+#: excluded: ETFs, closed-end funds, REITs, and foreign-incorporated issuers (ADRs).
+CIZ_COMMON_STOCK_FILTER: dict[str, tuple[str, ...]] = {
+    "securitytype": ("EQTY",),
+    "securitysubtype": ("COM",),
+    "issuertype": ("CORP",),
+    "usincflg": ("Y",),
+}
 
 
 def load_crsp_ciz(
@@ -456,13 +471,15 @@ def load_crsp_ciz(
     delisting_path: str | Path | None = None,
     share_types: Iterable[str] | None = CIZ_COMMON_SHARE_TYPES,
     exchanges: Iterable[str] | None = CIZ_MAJOR_EXCHANGES,
+    common_shares_only: bool = True,
 ) -> Dataset:
     """Load a CRSP CIZ daily stock file, plus its separate delisting table.
 
     Args:
         daily_path: The Daily Stock File export. Needs at least `permno`, `dlycaldt`, `dlyprc`;
             `dlyvol`, `dlyprcvol`, `dlyret`, `sharetype`, `primaryexch`, `ticker` are used when
-            present.
+            present. With the default `common_shares_only=True` it must also carry
+            `securitytype`, `securitysubtype`, `issuertype` and `usincflg`.
         delisting_path: The Delisting Information export. Optional only in the sense that the
             loader will run without it — but running without it means falling back to the
             engine's optimistic exit-at-last-price assumption, which is the single largest
@@ -470,6 +487,11 @@ def load_crsp_ciz(
         share_types: CIZ `sharetype` values to keep. Defaults to US ordinary common shares.
             `None` keeps everything, including ADRs, REITs and closed-end funds.
         exchanges: CIZ `primaryexch` values to keep. Defaults to NYSE/NYSE American/Nasdaq.
+        common_shares_only: Apply `CIZ_COMMON_STOCK_FILTER`, which is what actually excludes
+            funds — `sharetype` alone does not, because ETFs carry 'NS' too. The classification
+            columns are REQUIRED when this is true: an extract without them cannot prove it is
+            fund-free, and skipping the filter silently is how the contamination survived the
+            first time. Pass False for an old extract, accepting the funds it lets through.
 
     Returns:
         A `Dataset` keyed on PERMNO as a string, identical in shape to the legacy loader's — so
@@ -517,6 +539,20 @@ def load_crsp_ciz(
         frame = frame.filter(
             pl.col("primaryexch").cast(pl.Utf8).str.strip_chars().is_in(list(exchanges))
         )
+    if common_shares_only:
+        absent = [c for c in CIZ_COMMON_STOCK_FILTER if c not in frame.columns]
+        if absent:
+            raise DataError(
+                f"{source} lacks classification column(s) {absent}, so it cannot be filtered to "
+                f"common stock — and sharetype alone does not do it: SPY, QQQ, IWM and ARKK all "
+                f"carry 'NS'. Re-pull the extract with securitytype, securitysubtype, issuertype "
+                f"and usincflg, or pass common_shares_only=False to accept the funds this "
+                f"extract cannot exclude."
+            )
+        for criterion, allowed in CIZ_COMMON_STOCK_FILTER.items():
+            frame = frame.filter(
+                pl.col(criterion).cast(pl.Utf8).str.strip_chars().is_in(list(allowed))
+            )
     if frame.is_empty():
         raise DataError(
             f"no rows survived the share-type and exchange filters. CIZ uses text codes — "

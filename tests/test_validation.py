@@ -156,6 +156,43 @@ class TestWalkForwardScoring:
         with pytest.raises(PanelError, match="at least one fold"):
             walk_forward([], fast_signal, prices())
 
+    def test_a_test_window_shorter_than_the_lag_is_skipped_not_fatal(self) -> None:
+        """The warmup guard checks the SIGNAL window, but the engine only sees the test slice —
+        a hand-built final fold shorter than the lag used to raise PanelError mid-loop and take
+        every other fold's result down with it. A fold that cannot run is skipped with its
+        reason recorded, not a crash and not a loss."""
+        from crucible.walkforward import Fold
+
+        panel = prices(700, 10)
+        folds = rolling_folds(panel, train_size=200, test_size=100, warmup=20)
+        stub = Fold(
+            index=len(folds), train_start=0, train_end=698, test_start=698, test_end=699, warmup=20
+        )
+
+        result = walk_forward([*folds, stub], fast_signal, panel, costs=CostModel())
+
+        assert result.outcomes[-1].skipped
+        assert "too short" in result.outcomes[-1].reason
+        assert len(result.scored) == len(folds)
+        assert result.testable
+
+    def test_each_folds_first_return_is_structurally_gross_zero(self) -> None:
+        """Documented behaviour of WalkForwardResult.returns: the engine earns its first return
+        one period after the entry rebalance, so row 0 of each fold carries only entry costs.
+        Frictionless, that is exactly zero; with costs it is the (negative) cost of putting the
+        book on, which is kept in the series rather than dropped — discarding it would erase
+        the entry cost once per fold and flatter every statistic computed downstream."""
+        panel = prices(800, 20)
+        folds = rolling_folds(panel, train_size=200, test_size=100, warmup=20)
+        offsets = np.cumsum([0] + [f.test_length for f in folds[:-1]])
+
+        frictionless = walk_forward(folds, fast_signal, panel)
+        assert all(frictionless.returns[o] == 0.0 for o in offsets)
+
+        costly = walk_forward(folds, fast_signal, panel, costs=CostModel(spread_bps=10.0))
+        assert all(costly.returns[o] <= 0.0 for o in offsets)
+        assert any(costly.returns[o] < 0.0 for o in offsets)
+
 
 class TestSharpeStatistics:
     def test_sharpe_matches_the_definition(self) -> None:

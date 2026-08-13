@@ -33,6 +33,19 @@ Ask for these variables, and no others to begin with:
 | `TICKER` | a label, never a key |
 | `DLRET` | **the delisting return.** The single most valuable column in the file |
 
+### If WRDS serves the new (CIZ) format instead
+
+Extracts pulled after CRSP retired the legacy SIZ format (December 2024) use Flat File Format
+2.0 and `crucible.data.load_crsp_ciz`. The variables above map to `PERMNO`, `DlyCalDt`, `DlyPrc`,
+`DlyVol`, `DlyPrcVol`, `DlyRet`, `ShrOut`, `ShareType`, `PrimaryExch`, `Ticker` — plus the four
+classification columns `SecurityType`, `SecuritySubType`, `IssuerType`, `USIncFlg` (required by
+default: `sharetype` alone cannot exclude ETFs), and **`DlyPrcFlg`**. That last one matters more
+than it looks: CIZ prices are unsigned, so the legacy "negative PRC means no trade" convention is
+gone and `DlyPrcFlg` is the only way to tell a traded price from a bid/ask midpoint nobody
+filled. Without it every quoted session looks tradable, and the loader warns about exactly that.
+Delisting returns are a separate query in CIZ (**Stock Delisting Information**, joined on
+PERMNO) — pass it as `delisting_path`.
+
 Date range: start as early as the subscription allows. The evidence requirement measured in
 `crucible.significance` is blunt — against a 50-trial search, an edge with an annualised Sharpe
 near 1.27 needs roughly 20 years of daily data to distinguish itself from luck, and one near 0.79

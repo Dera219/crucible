@@ -51,6 +51,7 @@ any code runs. `RDQ` is the report date; use it.
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -464,6 +465,15 @@ CIZ_COMMON_STOCK_FILTER: dict[str, tuple[str, ...]] = {
     "usincflg": ("Y",),
 }
 
+#: CIZ `dlyprcflg` values marking a price that is a quote, not a trade. CIZ prices are unsigned,
+#: so the legacy convention — a negative PRC is a negated bid/ask midpoint on a day the security
+#: did not trade — is gone, and this flag is the only place the information survives. 'BA' is the
+#: bid/ask average, the direct analogue of the legacy negated midpoint. Rows carrying one of
+#: these are treated exactly as the legacy loader treats a negative PRC: the magnitude is kept
+#: (for `raw_prices` and the dollar-volume fallback) but the session is marked non-investable,
+#: because a midpoint nobody filled is not a price a strategy may transact at.
+CIZ_QUOTE_ONLY_PRICE_FLAGS = ("BA",)
+
 
 def load_crsp_ciz(
     daily_path: str | Path,
@@ -477,9 +487,14 @@ def load_crsp_ciz(
 
     Args:
         daily_path: The Daily Stock File export. Needs at least `permno`, `dlycaldt`, `dlyprc`;
-            `dlyvol`, `dlyprcvol`, `dlyret`, `sharetype`, `primaryexch`, `ticker` are used when
-            present. With the default `common_shares_only=True` it must also carry
-            `securitytype`, `securitysubtype`, `issuertype` and `usincflg`.
+            `dlyvol`, `dlyprcvol`, `dlyret`, `dlyprcflg`, `sharetype`, `primaryexch`, `ticker`
+            are used when present. With the default `common_shares_only=True` it must also carry
+            `securitytype`, `securitysubtype`, `issuertype` and `usincflg`. `dlyprcflg` deserves
+            emphasis: CIZ prices are unsigned, so it is the ONLY marker of a quote-only session
+            (the legacy negative-PRC convention). Rows flagged in
+            `CIZ_QUOTE_ONLY_PRICE_FLAGS` are marked non-investable; when the column is absent
+            entirely a warning is emitted, because those sessions then cannot be told apart
+            from traded ones.
         delisting_path: The Delisting Information export. Optional only in the sense that the
             loader will run without it — but running without it means falling back to the
             engine's optimistic exit-at-last-price assumption, which is the single largest
@@ -561,10 +576,13 @@ def load_crsp_ciz(
             f"legacy format. Check the values actually present in this extract."
         )
 
-    # CIZ prices are unsigned; a non-trading day is marked by dlyprcflg rather than by a negative
-    # price. Where the flag is absent the price is taken at face value.
+    # CIZ prices are unsigned: the legacy negative-PRC convention for a non-trading day is gone,
+    # and the information moved into the dlyprcflg column. That flag is read further down, AFTER
+    # the adjusted series and dollar volume are built — the quote-day return still belongs in
+    # the compounding (CRSP records DlyRet midpoint-to-midpoint, and the adjusted series
+    # reproduces DlyRet exactly), the day itself is just not one a strategy may transact on.
     #
-    # But dlyprc is RAW and UNADJUSTED, and the engine derives returns as pct_change of the price
+    # dlyprc is also RAW and UNADJUSTED, and the engine derives returns as pct_change of the price
     # panel — so handing it this column silently reproduces the exact split bug this library was
     # built to catch. Verified against three known splits in the real extract:
     #
@@ -607,6 +625,31 @@ def load_crsp_ciz(
             else pl.lit(None, dtype=pl.Float64)
         ).alias("_ret"),
     )
+
+    # Non-trading sessions. Applied last, so the quote-day return has already been compounded
+    # into the adjusted series and the quote magnitude has already fed the dollar-volume
+    # fallback — only the tradability of the day itself is withdrawn, exactly as the legacy
+    # loader nulls the price while keeping `_price_magnitude`.
+    if "dlyprcflg" in frame.columns:
+        quote_only = (
+            pl.col("dlyprcflg")
+            .cast(pl.Utf8)
+            .str.strip_chars()
+            .str.to_uppercase()
+            .is_in(list(CIZ_QUOTE_ONLY_PRICE_FLAGS))
+        )
+        frame = frame.with_columns(
+            pl.when(quote_only).then(None).otherwise(pl.col("_price")).alias("_price")
+        )
+    else:
+        warnings.warn(
+            f"{source} has no dlyprcflg column, so quote-only sessions are indistinguishable "
+            f"from traded ones and every priced row will be treated as investable. The legacy "
+            f"format marked a non-trading day with a negative PRC; CIZ moved that information "
+            f"into DlyPrcFlg, and an extract without it quietly lets strategies transact at "
+            f"midpoints nobody filled. Re-pull with DlyPrcFlg selected — see WRDS.md.",
+            stacklevel=2,
+        )
 
     dates = sorted({d for d in frame["_date"].to_list() if d is not None})
     permnos = sorted(set(frame["_permno"].to_list()))

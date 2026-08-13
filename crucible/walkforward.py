@@ -240,6 +240,12 @@ class WalkForwardResult:
     """Every fold, and the honest summary of them."""
 
     outcomes: tuple[FoldOutcome, ...]
+    #: Net returns of every scored fold, concatenated in fold order — the out-of-sample series
+    #: any Sharpe should be computed on. Row 0 of each fold is structurally gross-zero: the
+    #: engine earns its first return one period after the entry rebalance, so that row carries
+    #: only the fold's entry costs (and any day-one delisting drag). It is kept rather than
+    #: dropped, deliberately — discarding it would erase the cost of putting the book on, once
+    #: per fold, which flatters every statistic computed from this series.
     returns: Array
 
     @property
@@ -386,6 +392,29 @@ def walk_forward(
                     turnover=0.0,
                     skipped=True,
                     reason=f"window of {window.n_times} rows is too short for lag {execution_lag}",
+                )
+            )
+            continue
+
+        # The check above guards the SIGNAL window (warmup + test), but the engine is handed
+        # only the test slice — so a fold whose test window is shorter than the lag passed the
+        # first guard and then raised PanelError inside `_score`, killing the whole evaluation
+        # over its final, structurally short fold. A fold that cannot run is skipped with its
+        # reason recorded, exactly like an unusable-warmup fold; it is not a loss and not fatal.
+        if fold.test_length <= execution_lag:
+            outcomes.append(
+                FoldOutcome(
+                    index=fold.index,
+                    strategy_return=0.0,
+                    baseline_return=0.0,
+                    traded=False,
+                    turnover=0.0,
+                    skipped=True,
+                    reason=(
+                        f"test window of {fold.test_length} row(s) is too short for "
+                        f"execution_lag {execution_lag}; the engine needs at least "
+                        f"{execution_lag + 1}"
+                    ),
                 )
             )
             continue

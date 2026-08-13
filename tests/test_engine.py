@@ -109,6 +109,43 @@ class TestAccounting:
 
         assert paid.total_return < free.total_return
 
+    def test_total_return_compounds_the_net_returns(self) -> None:
+        """The headline number and the series it summarises must be the same number."""
+        prices = random_prices()
+        weights = cs_scale(cs_demean(cs_rank(prices.pct_change(20))))
+
+        result = backtest(weights, prices, costs=CostModel(spread_bps=5.0))
+
+        assert result.total_return == pytest.approx(
+            float(np.prod(1 + result.net_returns)) - 1, rel=1e-12
+        )
+
+    def test_total_return_includes_the_entry_cost(self) -> None:
+        """`equity[-1] / equity[0] - 1` silently excluded the first rebalance's costs, because
+        equity[0] is already post-cost — so the headline disagreed with net_returns by exactly
+        the cost of putting the book on. On flat prices with a single entry trade, the old
+        formula reported precisely 0.0."""
+        prices = mk(np.full((30, 2), 100.0))
+
+        result = backtest(
+            prices.with_values(np.full((30, 2), 0.5)), prices, costs=CostModel(spread_bps=10.0)
+        )
+
+        assert result.net_returns[0] < 0  # the entry spread was charged
+        assert result.total_return == pytest.approx(float(result.net_returns[0]), rel=1e-12)
+
+    def test_annual_turnover_accepts_a_custom_year_length(self) -> None:
+        """Previously a @property with a `periods_per_year` parameter that could never be
+        passed — the default was silently mandatory."""
+        prices = random_prices()
+        weights = cs_scale(cs_demean(cs_rank(prices.pct_change(20))))
+
+        result = backtest(weights, prices, costs=CostModel())
+        mean = float(np.nanmean(result.turnover))
+
+        assert result.annual_turnover() == pytest.approx(mean * 252)
+        assert result.annual_turnover(periods_per_year=52) == pytest.approx(mean * 52)
+
     def test_a_weight_on_a_non_investable_asset_is_forced_to_zero(self) -> None:
         """A weight you could not have held is not a weight."""
         values = np.full((20, 2), 100.0)
@@ -118,6 +155,84 @@ class TestAccounting:
         result = backtest(prices.with_values(np.full((20, 2), 0.5)), prices, costs=CostModel())
 
         assert np.all(result.held_weights[:, 1] == 0.0)
+
+
+class TestTemporaryGapsCarryThrough:
+    """The module docstring's contract — "you still hold it, you simply cannot trade it that
+    day" — enforced. An earlier version zeroed the target on the gap day instead, which sold
+    the position at full spread on a session nobody could trade, bought it back at full spread
+    the next, and never collected the return across the gap."""
+
+    @staticmethod
+    def flat_prices_with_a_gap() -> Panel:
+        values = np.full((10, 2), 100.0)
+        values[5, 0] = np.nan  # one non-trading session; trading resumes at t=6
+        return mk(values)
+
+    def half_and_half(self, prices: Panel) -> Panel:
+        return prices.with_values(np.full(prices.shape, 0.5))
+
+    def test_the_gap_day_produces_no_turnover(self) -> None:
+        prices = self.flat_prices_with_a_gap()
+
+        result = backtest(self.half_and_half(prices), prices, costs=CostModel(spread_bps=10.0))
+
+        # Flat prices mean no drift, so after the entry trade the only turnover the old code
+        # produced was the forced round trip through the gap. There must be none.
+        assert result.turnover[1:].sum() == pytest.approx(0.0, abs=1e-12)
+
+    def test_the_position_is_retained_through_the_gap(self) -> None:
+        prices = self.flat_prices_with_a_gap()
+
+        result = backtest(self.half_and_half(prices), prices, costs=CostModel(spread_bps=10.0))
+
+        assert result.held_weights[5, 0] == pytest.approx(0.5)
+        assert result.held_weights[6, 0] == pytest.approx(0.5)
+
+    def test_no_cost_is_charged_on_an_untradable_day(self) -> None:
+        prices = self.flat_prices_with_a_gap()
+
+        result = backtest(self.half_and_half(prices), prices, costs=CostModel(spread_bps=10.0))
+
+        assert float(result.costs.total[1:].sum()) == pytest.approx(0.0, abs=1e-15)
+
+    def test_a_gap_is_not_a_delisting_event(self) -> None:
+        prices = self.flat_prices_with_a_gap()
+
+        result = backtest(self.half_and_half(prices), prices, costs=CostModel())
+
+        assert result.delisting_events == 0
+
+    def test_a_permanent_exit_still_liquidates(self) -> None:
+        """The gap carry-through must not soften genuine delistings."""
+        values = np.full((10, 2), 100.0)
+        values[5:, 0] = np.nan  # gone for good
+        prices = mk(values)
+
+        result = backtest(
+            self.half_and_half(prices), prices, costs=CostModel(), delisting_return={"A0": -0.6}
+        )
+
+        assert result.delisting_events == 1
+        assert np.all(result.held_weights[5:, 0] == 0.0)
+        assert result.delisting_drag.sum() == pytest.approx(-0.30, abs=1e-9)
+
+    def test_the_gap_return_accrues_when_the_vendor_records_one(self) -> None:
+        """CRSP's DlyRet is recorded on quote-only sessions, midpoint to midpoint. A position
+        carried through the gap earns the vendor's number; with returns derived from prices the
+        gap move is unmeasurable and the position carries at zero instead."""
+        prices = self.flat_prices_with_a_gap()
+        vendor_values = np.zeros((10, 2))
+        vendor_values[0] = np.nan  # no prior period, same as pct_change
+        vendor_values[5, 0] = 0.10  # the vendor's record of the move into the gap session
+        vendor = mk(vendor_values, name="dlyret")
+
+        result = backtest(self.half_and_half(prices), prices, returns=vendor)
+
+        assert result.gross_returns[5] == pytest.approx(0.05)
+        # The derived path has NaN across the gap and earns nothing there.
+        derived = backtest(self.half_and_half(prices), prices)
+        assert derived.gross_returns[5] == pytest.approx(0.0)
 
 
 class TestDelisting:
@@ -258,6 +373,68 @@ class TestSquareRootImpact:
 
         assert result.costs.strained_periods > 0
         assert "extrapolation" in result.costs.summary()
+
+
+class TestUnpriceableVolume:
+    """A trade against missing or zero volume cannot be priced, and the one thing it is NOT is
+    free. NaN participation used to flow through nan_to_num into zero impact — spread-only
+    pricing, cheapest exactly where the data says liquidity was absent."""
+
+    MODEL = CostModel(spread_bps=0.0, impact_coefficient=1.0)
+
+    def charge_with_volume(self, dollar_volume: float) -> tuple[float, float]:
+        """(impact, peak_participation) for a fixed trade against the given volume."""
+        _, impact, _, peak = self.MODEL.charge_row(
+            traded_weight=np.array([0.5]),
+            equity=1e6,
+            prices=np.array([100.0]),
+            dollar_volume=np.array([dollar_volume]),
+            volatility=np.array([0.25]),
+        )
+        return impact, peak
+
+    def test_nan_volume_is_priced_at_full_participation(self) -> None:
+        impact, peak = self.charge_with_volume(np.nan)
+        # Full participation: the same charge as consuming an entire day's volume.
+        saturated, _ = self.charge_with_volume(0.5 * 1e6)
+
+        assert impact == pytest.approx(saturated, rel=1e-12)
+        assert impact > 0
+        assert peak == pytest.approx(1.0)
+
+    def test_zero_volume_is_priced_at_full_participation(self) -> None:
+        impact, peak = self.charge_with_volume(0.0)
+
+        assert impact == pytest.approx(0.25 / np.sqrt(252) * 0.5, rel=1e-9)
+        assert peak == pytest.approx(1.0)
+
+    def test_no_trade_against_nan_volume_costs_nothing(self) -> None:
+        """The conservatism applies to trades, not to holdings."""
+        spread, impact, commission, peak = self.MODEL.charge_row(
+            traded_weight=np.array([0.0]),
+            equity=1e6,
+            prices=np.array([100.0]),
+            dollar_volume=np.array([np.nan]),
+            volatility=np.array([0.25]),
+        )
+
+        assert (spread, impact, commission, peak) == (0.0, 0.0, 0.0, 0.0)
+
+    def test_the_batched_charge_agrees(self) -> None:
+        """`charge` must apply the same rule as `charge_row`."""
+        report = self.MODEL.charge(
+            traded_weight=np.array([[0.5], [0.0]]),
+            equity=np.array([1e6, 1e6]),
+            prices=np.full((2, 1), 100.0),
+            dollar_volume=np.full((2, 1), np.nan),
+            volatility=np.full((2, 1), 0.25),
+        )
+
+        row_impact, _ = self.charge_with_volume(np.nan)
+        assert report.impact[0] == pytest.approx(row_impact, rel=1e-12)
+        assert report.impact[1] == 0.0
+        assert report.peak_participation[0] == pytest.approx(1.0)
+        assert report.strained_periods == 1
 
 
 class TestCapacity:

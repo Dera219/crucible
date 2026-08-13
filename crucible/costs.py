@@ -167,6 +167,13 @@ class CostModel:
         with np.errstate(divide="ignore", invalid="ignore"):
             participation = np.where(dollar_volume > 0, traded_notional / dollar_volume, np.nan)
             shares = np.where(prices > 0, traded_notional / prices, 0.0)
+            # A trade against missing or zero volume cannot be priced, and the one thing it is
+            # NOT is free. NaN participation used to flow through nan_to_num into zero impact,
+            # charging spread only — cheapest exactly where the data says liquidity was absent.
+            # Priced instead at full participation, the most expensive fill the clipped
+            # square-root law can express, and surfaced through peak_participation so the
+            # period is flagged as strained rather than quietly absorbed.
+            unpriceable = (traded_notional > 0) & ~(dollar_volume > 0)
 
         spread = float(np.nansum(traded_notional * (self.spread_bps / 2 / 10_000)))
 
@@ -175,12 +182,14 @@ class CostModel:
         # rather than merely conservative.
         effective_vol = np.maximum(volatility, self.min_volatility) / self._vol_scale
         clipped = np.clip(np.nan_to_num(participation, nan=0.0), 0.0, 1.0)
+        clipped = np.where(unpriceable, 1.0, clipped)
         impact = float(
             np.nansum(self.impact_coefficient * effective_vol * np.sqrt(clipped) * traded_notional)
         )
         commission = float(np.nansum(shares * self.commission_per_share))
 
-        finite = participation[np.isfinite(participation)]
+        peak_source = np.where(unpriceable, 1.0, participation)
+        finite = peak_source[np.isfinite(peak_source)]
         peak = float(finite.max()) if finite.size else 0.0
         return spread / equity, impact / equity, commission / equity, peak
 
@@ -213,6 +222,9 @@ class CostModel:
         with np.errstate(divide="ignore", invalid="ignore"):
             participation = np.where(dollar_volume > 0, traded_notional / dollar_volume, np.nan)
             shares = np.where(prices > 0, traded_notional / prices, 0.0)
+            # Same rule as charge_row: a trade against missing or zero volume is priced at full
+            # participation rather than falling through NaN to a free fill. See charge_row.
+            unpriceable = (traded_notional > 0) & ~(dollar_volume > 0)
 
         half_spread = self.spread_bps / 2 / 10_000
         spread_cost = traded_notional * half_spread
@@ -222,6 +234,7 @@ class CostModel:
         # would produce is not conservative, it is meaningless.
         effective_vol = np.maximum(volatility, self.min_volatility) / self._vol_scale
         clipped = np.clip(np.nan_to_num(participation, nan=0.0), 0.0, 1.0)
+        clipped = np.where(unpriceable, 1.0, clipped)
         impact_cost = self.impact_coefficient * effective_vol * np.sqrt(clipped) * traded_notional
 
         commission_cost = shares * self.commission_per_share
@@ -229,11 +242,15 @@ class CostModel:
         with np.errstate(divide="ignore", invalid="ignore"):
             scale = np.where(equity > 0, 1.0 / equity, 0.0)[:, None]
 
+        # NaN participation on rows that did not trade reads as zero for the peak — the NaN is
+        # replaced BEFORE the max so an all-NaN row is ordinary rather than a numpy warning.
+        peak_source = np.nan_to_num(np.where(unpriceable, 1.0, participation), nan=0.0)
+
         return CostReport(
             spread=np.nansum(spread_cost * scale, axis=1),
             impact=np.nansum(impact_cost * scale, axis=1),
             commission=np.nansum(commission_cost * scale, axis=1),
-            peak_participation=np.nan_to_num(np.nanmax(participation, axis=1), nan=0.0),
+            peak_participation=np.max(peak_source, axis=1),
         )
 
     def capacity_notional(

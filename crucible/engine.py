@@ -103,9 +103,18 @@ class BacktestResult:
 
     @property
     def total_return(self) -> float:
-        if len(self.equity) < 2 or self.equity[0] == 0:
+        """Compound growth of `net_returns`, so the headline number agrees with the series.
+
+        Computed from the returns rather than as `equity[-1] / equity[0] - 1`. The ratio looks
+        equivalent and is not: `equity[0]` is already net of the first rebalance's costs, so the
+        ratio silently excluded the cost of putting the book on while `net_returns` charged it —
+        the two disagreed by exactly the entry cost on every run that traded.
+        """
+        if len(self.net_returns) == 0:
             return 0.0
-        return float(self.equity[-1] / self.equity[0] - 1)
+        growth = float(np.prod(1.0 + self.net_returns))
+        # The engine floors equity at zero on a wipeout; floor the compounded number to match.
+        return max(growth, 0.0) - 1.0
 
     @property
     def traded(self) -> bool:
@@ -117,8 +126,13 @@ class BacktestResult:
         """
         return bool(np.nansum(self.turnover) > 0)
 
-    @property
     def annual_turnover(self, periods_per_year: int = 252) -> float:
+        """Mean per-period turnover, annualised.
+
+        A method rather than a property: an earlier version declared this as a `@property`
+        carrying a `periods_per_year` parameter, which Python happily accepts and which makes
+        the parameter impossible to ever pass — the default was silently mandatory.
+        """
         if len(self.turnover) == 0:
             return 0.0
         return float(np.nanmean(self.turnover) * periods_per_year)
@@ -176,7 +190,10 @@ def backtest(
         target_weights: `(T, N)` desired portfolio weights as fractions of equity. NaN is
             treated as zero — no opinion means no position. Weights on assets that are not
             investable at that timestamp are forced to zero, because a weight you could not
-            have held is not a weight.
+            have held is not a weight — with one exception: a position already held in an
+            asset that is only *temporarily* non-tradable is carried through unchanged rather
+            than force-liquidated, per the module docstring. The target is simply unreachable
+            that session, and reaching for it would charge a spread nobody could pay.
         prices: `(T, N)` prices, already adjusted for splits and dividends.
         costs: Cost model. `None` runs frictionless, which is a diagnostic and never a result —
             every strategy is profitable if trading is free, so a zero-cost backtest mostly
@@ -260,7 +277,19 @@ def backtest(
         investable.any(axis=0), investable.shape[0] - 1 - investable[::-1].argmax(axis=0), -1
     )
 
+    # A weight on a non-investable asset cannot be ESTABLISHED — a weight you could not have
+    # held is not a weight. This zeroing only prevents new positions; a position already held
+    # through a temporary gap is carried unchanged by the loop below, which knows the book.
     targets = np.where(investable, targets, 0.0)
+
+    # Temporarily non-tradable: no price this session, but the security trades again later.
+    # This is the mask that enforces the module docstring's contract — "you still hold it, you
+    # simply cannot trade it that day". On these cells the engine's effective target is
+    # whatever is already held, so no trade occurs, no spread or impact is charged, and the
+    # position survives the gap. An earlier version zeroed the target here instead, which
+    # force-liquidated the position at full spread on a day nobody could trade, bought it back
+    # the next session at full spread again, and never collected the return across the gap.
+    temporarily_out = ~investable & (np.arange(n_times)[:, None] <= last_investable[None, :])
 
     vol_values = np.nan_to_num(volatility_panel.values, nan=0.0)
     price_values = np.nan_to_num(price_panel.values, nan=0.0)
@@ -298,8 +327,12 @@ def backtest(
             drag_series[t] = drag
             held = np.where(gone, 0.0, held)
 
+        # Enforce the gap contract: an asset with no price today but a price later is held
+        # through unchanged. Its effective target this session is the position itself.
+        effective_target = np.where(temporarily_out[t], held, targets[t])
+
         # Rebalance from DRIFTED holdings to target. This difference is the real turnover.
-        traded = np.abs(targets[t] - held)
+        traded = np.abs(effective_target - held)
         turnover[t] = float(traded.sum())
 
         spread, impact, commission, peak = cost_model.charge_row(
@@ -314,7 +347,7 @@ def backtest(
         commission_cost[t] = commission
         participation[t] = peak
 
-        held = targets[t].copy()
+        held = effective_target
         held_history[t] = held
 
         period_gross = gross[t]
@@ -330,8 +363,13 @@ def backtest(
             break
 
         period_return = asset_returns[t + 1]
-        # A position carried through a temporary gap earns nothing that session rather than
-        # being liquidated: no price means no trade, not no position.
+        # A position carried through a temporary gap is not liquidated — no price means no
+        # trade, not no position. Where the gap's return lands depends on the return panel:
+        # with the vendor's series it accrues here as usual (CRSP records DlyRet on quote-only
+        # sessions, midpoint to midpoint), while with returns derived from prices both the gap
+        # day and the resumption day are NaN — the move across the gap is unmeasurable from
+        # prices alone, so the position deliberately carries at zero return until a genuine
+        # price-to-price return exists rather than having one invented for it.
         usable = np.isfinite(period_return)
         gross_next = float(np.sum(held[usable] * period_return[usable]))
         gross[t + 1] = gross_next

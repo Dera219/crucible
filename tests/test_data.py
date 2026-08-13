@@ -10,6 +10,7 @@ shaped like the real thing rather than against data shaped like the loader.
 
 from __future__ import annotations
 
+import warnings
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -321,6 +322,7 @@ CIZ_SCHEMA = {
     "PERMNO": pl.Int64,
     "DlyCalDt": pl.Utf8,
     "DlyPrc": pl.Float64,
+    "DlyPrcFlg": pl.Utf8,
     "DlyVol": pl.Float64,
     "DlyPrcVol": pl.Float64,
     "DlyRet": pl.Utf8,
@@ -370,6 +372,7 @@ def ciz_files(tmp_path: Path) -> tuple[Path, Path]:
                     "PERMNO": 20000 + offset,
                     "DlyCalDt": when.isoformat(),
                     "DlyPrc": round(float(prices[i]), 4),
+                    "DlyPrcFlg": "TR",
                     "DlyVol": float(rng.integers(1e5, 9e6)),
                     "DlyPrcVol": float(rng.integers(1e7, 5e8)),
                     "DlyRet": f"{rng.normal(0, 0.015):.6f}",
@@ -442,6 +445,9 @@ class TestCIZFormat:
         assert "20007" not in assets  # foreign-incorporated on NYSE
         assert {"20000", "20001", "20002"} <= assets
 
+    # The minimal fixture below has no dlyprcflg either; that warning has its own tests in
+    # TestCIZNonTradingDays and is noise here.
+    @pytest.mark.filterwarnings("ignore:.*dlyprcflg.*:UserWarning")
     def test_refuses_to_claim_fund_free_without_the_classification_columns(
         self, tmp_path: Path
     ) -> None:
@@ -534,3 +540,80 @@ class TestCIZFormat:
         assert isinstance(dataset, Dataset)
         assert dataset.prices.shape == dataset.dollar_volume.shape == dataset.returns.shape
         assert set(dataset.listings) <= set(dataset.assets)
+
+
+class TestCIZNonTradingDays:
+    """CIZ prices are unsigned — the legacy 'negative PRC means no trade' convention is gone,
+    and `dlyprcflg` is the only place the information survives. A loader that ignores it treats
+    every bid/ask midpoint as a fill, and a loader that lacks the column entirely must say so
+    rather than silently doing the same thing."""
+
+    N_ROWS = 6
+    QUOTE_ROW = 2
+
+    def write_daily(self, tmp_path: Path, *, with_flag: bool) -> Path:
+        rows = []
+        for i in range(self.N_ROWS):
+            row: dict[str, object] = {
+                "PERMNO": 40000,
+                "DlyCalDt": (date(2023, 1, 2) + timedelta(days=i)).isoformat(),
+                "DlyPrc": 10.0,
+                "DlyPrcVol": 1e6,
+                # A constant 1% return, so the adjusted series is easy to reason about.
+                "DlyRet": "" if i == 0 else "0.010000",
+            }
+            if with_flag:
+                row["DlyPrcFlg"] = "BA" if i == self.QUOTE_ROW else "TR"
+            rows.append(row)
+        path = tmp_path / ("flagged.csv" if with_flag else "flagless.csv")
+        pl.DataFrame(rows).write_csv(path)
+        return path
+
+    @staticmethod
+    def load(path: Path) -> Dataset:
+        return load_crsp_ciz(path, share_types=None, exchanges=None, common_shares_only=False)
+
+    def test_a_quote_only_flag_marks_the_session_non_investable(self, tmp_path: Path) -> None:
+        """The CIZ analogue of the legacy negative-PRC rule: a midpoint nobody filled is not a
+        price a strategy may transact at."""
+        dataset = self.load(self.write_daily(tmp_path, with_flag=True))
+
+        assert np.isnan(dataset.prices.values[self.QUOTE_ROW, 0])
+        assert int(dataset.prices.investable[:, 0].sum()) == self.N_ROWS - 1
+
+    def test_the_quote_day_return_still_compounds_into_the_series(self, tmp_path: Path) -> None:
+        """Only the day's tradability is withdrawn. CRSP records DlyRet midpoint-to-midpoint,
+        so the adjusted series across the gap must still carry the quote-day return — dropping
+        it would make the series disagree with DlyRet from that day onward."""
+        dataset = self.load(self.write_daily(tmp_path, with_flag=True))
+        adjusted = dataset.prices.values[:, 0]
+
+        assert adjusted[self.QUOTE_ROW + 1] / adjusted[self.QUOTE_ROW - 1] == pytest.approx(
+            1.01**2
+        )
+
+    def test_the_raw_price_magnitude_is_kept(self, tmp_path: Path) -> None:
+        """Same as the legacy loader keeping `_price_magnitude`: the quote is real data, it is
+        just not a fill."""
+        dataset = self.load(self.write_daily(tmp_path, with_flag=True))
+
+        assert dataset.raw_prices is not None
+        assert dataset.raw_prices.values[self.QUOTE_ROW, 0] == pytest.approx(10.0)
+
+    def test_a_flagged_extract_loads_without_warning(self, tmp_path: Path) -> None:
+        path = self.write_daily(tmp_path, with_flag=True)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            self.load(path)
+
+    def test_an_extract_without_the_flag_warns_loudly(self, tmp_path: Path) -> None:
+        """Silence here would reinstate the defect the flag exists to prevent: quote-only
+        sessions indistinguishable from traded ones, and nobody told."""
+        path = self.write_daily(tmp_path, with_flag=False)
+
+        with pytest.warns(UserWarning, match="dlyprcflg"):
+            dataset = self.load(path)
+
+        # Without the flag every priced row is (unavoidably) treated as investable.
+        assert int(dataset.prices.investable[:, 0].sum()) == self.N_ROWS

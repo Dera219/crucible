@@ -38,6 +38,17 @@ index providers do, for the same reason. The band's width was set by measuring c
 CRSP extract — the numbers are in `liquidity_screen`'s docstring — after the original, narrower
 default was found to manufacture 37.7% of the book per year in forced round trips.
 
+## Screens compose, and one of them has to read a different panel
+
+Membership is an intersection of masks — a listing calendar, a liquidity rank, a price floor —
+and `Universe.from_masks` takes as many as there are. `price_floor_screen` is the odd one out:
+every other screen reads the same adjusted price panel the engine does, and that one must read
+the vendor's raw, unadjusted panel instead, because a "$5 line" drawn on a total-return index
+drifts away from five dollars with every split and dividend. Measured on the CRSP extract, below
+$5 on the tape US common stock returned **-0.64% annualised with a median 21-day return of
+-4.00%** over 2015-2025, survivorship-free; at or above it, +9.85%. Removing that segment is
+hygiene and not an edge, and the function's docstring is at pains to say so.
+
 ## What this module cannot fix
 
 If the data has no delisted securities, no amount of careful masking recovers them. Point-in-time
@@ -57,7 +68,13 @@ import numpy.typing as npt
 
 from crucible.panel import Panel, PanelError
 
-__all__ = ["Universe", "UniverseAudit", "liquidity_screen", "listing_mask"]
+__all__ = [
+    "Universe",
+    "UniverseAudit",
+    "liquidity_screen",
+    "listing_mask",
+    "price_floor_screen",
+]
 
 Mask = npt.NDArray[np.bool_]
 
@@ -126,8 +143,14 @@ def liquidity_screen(
         top_n: Keep roughly this many names. `None` disables the rank screen and keeps every
             asset clearing the absolute floors.
         min_dollar_volume: Absolute floor on trailing average notional.
-        min_price: Absolute floor on price. Sub-$5 names have wide relative spreads, are often
-            un-shortable, and are where cross-sectional signals go to produce fictional returns.
+        min_price: Absolute floor on the trailing average of whatever price panel is handed in.
+            Sub-$5 names have wide relative spreads, are often un-shortable, and are where
+            cross-sectional signals go to produce fictional returns. This floor is the coarse
+            one and is not the load-bearing one: the panel a backtest passes here is normally
+            `Dataset.prices`, which is total-return adjusted, so the line drifts with every
+            split and dividend and stops meaning the number written in the argument. Compose
+            `price_floor_screen`, which reads `Dataset.raw_prices` and refuses to run without
+            it, for a floor that means dollars. The measurements are in its docstring.
         window: Trailing periods for the averages.
         entry_rank: Rank a non-member must reach to join. Defaults to `0.6 * top_n`.
         exit_rank: Rank a member must fall past to leave. Defaults to `1.6 * top_n`.
@@ -197,6 +220,189 @@ def liquidity_screen(
         member = (member | joining) & ~leaving & eligible[row]
         mask[row] = member
 
+    return mask
+
+
+def price_floor_screen(
+    raw_prices: Panel | None,
+    *,
+    min_price: float = 5.0,
+    entry_price: float | None = None,
+) -> Mask:
+    """Drop names trading below a floor on their RAW, unadjusted price.
+
+    ## Why the panel this reads is not the panel everything else reads
+
+    `Dataset.prices` is total-return *adjusted*: it is compounded forward from each security's
+    first observed price, so its level is an index, not a price. A "$5 line" drawn on it is a
+    line on that index — it drifts with every dividend, split and reverse split, and after a few
+    years it has stopped meaning "five dollars" without anything having gone visibly wrong.
+
+    Measured on the verified 2015-2025 CRSP extract, over 7,698,163 liquid name-days, the
+    adjusted level runs at a median of 1.00x the raw price but a p99 of 3.16x and a maximum of
+    70x — the splits. A $5 line on the adjusted panel therefore disagrees with the tape on
+    195,447 name-days across 1,556 securities (2.54%), in both directions:
+
+        16,874 name-days   below $5 on the tape, at or above the adjusted line — admitted
+                           by an adjusted floor. These are the names the floor exists to remove.
+       178,573 name-days   at or above $5 on the tape, below the adjusted line — excluded
+                           by an adjusted floor. Mostly reverse splits, which is the corporate
+                           action failing companies use to hold a listing: the tape jumps 1:10
+                           and the return index does not move at all.
+
+    `Dataset.raw_prices` is the vendor's unadjusted series and exists for exactly this; its own
+    comment says never to compute returns from it. It is `None` for loaders that cannot supply
+    one, and this function raises rather than quietly using `prices` instead. A screen that
+    silently measures the wrong thing is worse than no screen: it is reported as applied, it
+    shows up in the audit, and it removes nothing it was asked to remove.
+
+    ## The evidence for the floor
+
+    Forward 21-session returns by raw price bucket, on the same extract (10,586,496 common-stock
+    name-days, 6,635 securities, 2,766 sessions), restricted to sessions turning over more than
+    $500k and computed survivorship-free — a security that disappears is liquidated at CRSP's own
+    delisting return and held flat afterwards, so the 6,068 recorded delistings (mean -4.7%, 331
+    worse than -50%) are inside these numbers rather than missing from them:
+
+        raw price        obs     annualised   median 21d   delisted within 21d
+        <$1          117,933       -8.75%       -9.47%           3.05%
+        $1-2         196,171       +0.55%       -4.80%           0.51%
+        $2-5         529,145       +0.80%       -2.83%           0.46%
+        $5-10        785,871       +6.50%       -0.31%           0.51%
+        $10-30     2,295,885      +10.39%       +0.35%           0.56%
+        $30-100    2,682,042       +9.92%       +0.69%           0.39%
+        >$100      1,041,367      +11.04%       +0.84%           0.24%
+
+    Monotone in price, and the shape of the cheap buckets is the whole argument. The median
+    sub-$1 name loses 9.5% over the next month while the bucket's mean loses 0.8%: most of them
+    bleed and a few multiply, which is the lottery-preference signature, and a cross-sectional
+    book holding the bucket collects the median far more often than it collects the mean. They
+    also delist inside the next month at roughly six times the rate of everything else.
+
+    **$5 is the default because it is where the sign changes**, not because it is a round number:
+    +0.80% annualised below it against +6.50% just above, and a median that goes from -2.83% to
+    approximately flat. It is also the line most institutional mandates and marginability rules
+    already draw, so a universe built to it is comparable with published work. In aggregate the
+    floor removes 843,249 of 7,648,414 liquid name-days — 11.0% of breadth, returning **-0.64%
+    annualised with a median 21-day return of -4.00%** — and keeps 88.97%, returning +9.85%.
+
+    A $10 floor would look better still, and is refused on purpose. It would cut a further 10.3%
+    of breadth out of a bucket earning +6.50% a year; removing names *because they are cheap* at
+    that point is a factor tilt, and a tilt belongs in a signal and a registered hypothesis where
+    it is deflated for having been chosen, not smuggled into the universe definition where
+    nothing scores it.
+
+    The effect has not decayed. Splitting at 2020-10-06, annualised by bucket:
+
+        bucket    2015-2020    2020-2025
+        <$1         +1.45%      -13.78%
+        $1-2        +2.20%       -0.34%
+        $2-5        +9.02%       -4.70%
+        $5-10      +10.39%       +3.33%
+        $10-30     +10.68%      +10.04%
+
+    Every cheap bucket is *worse* in the second half while the rest of the market is flat, so
+    this is a live characteristic rather than a fact about 2015 that has since been arbitraged.
+
+    One caveat, stated because it was checked rather than assumed: the extract these were measured
+    on carries no `DlyPrcFlg`, so the quote-only and non-trading sessions that
+    `CIZ_NON_TRADED_PRICE_FLAGS` withdraws could not be marked. The $500k restriction removes them
+    anyway — such a session is one where nothing traded, and of the 7,710,527 sessions clearing
+    $500k, **zero** have null or zero share volume, against 0.85% of the extract overall.
+
+    ## Why entry sits above exit
+
+    A bare floor is a threshold, and this module already knows what thresholds do to a universe:
+    names oscillating across the line round-trip the book for reasons no signal asked for. On the
+    same extract, membership flips per year against the entry threshold, floor held at $5:
+
+        floor / entry    mean members    flips/yr    forced round trips
+        $5.00 / $5.00        2,479         3,033        61.2% of book/yr
+        $5.00 / $5.50        2,465         1,529        31.0%
+        $5.00 / $6.00        2,453         1,123        22.9%   <- default (1.2x)
+        $5.00 / $7.50        2,417           695        14.4%
+        $5.00 / $10.00       2,354           510        10.8%
+
+    A bare $5 line manufactures 61.2% of the book per year in round trips — worse than the 37.7%
+    that made `liquidity_screen`'s rank band too narrow to keep. Requiring $6.00 to join cuts
+    that by nearly two-thirds and costs 1.0% of mean membership, and the slice it defers is the
+    weakest one above the floor: the $5-6 zone returns +2.57% annualised with a -1.58% median,
+    against +9.85% for everything at or above $5. Wider buffers keep helping and start deleting
+    names that are genuinely fine, which is the tilt this function just refused to make.
+
+    Exit is at the floor itself and is *not* buffered, deliberately: the asymmetry is the point.
+    A name falling through $5 is entering the segment measured above, and every extra session it
+    is held there is a session inside a -4.00% median. Entry is where patience is cheap; exit is
+    where it is expensive.
+
+    ## What this is not
+
+    It is not an edge, and no part of it should be reported as one. It removes a segment that
+    destroyed value over eleven years; removing something bad is hygiene, and hygiene raises the
+    floor of a result without adding anything to its top. Any strategy that looks profitable
+    *because* this screen was applied is a strategy whose profit was a short position in the
+    penny-stock complex, which is expensive to borrow, frequently un-shortable, and not what the
+    backtest claims to be doing. The honest description of this function is that it stops a
+    cross-sectional signal from spending its breadth on names whose prices are not really prices.
+
+    Point observations are used, not trailing averages — the reverse of `liquidity_screen`'s
+    rule, and for a stated reason. Volume spikes on news and needs smoothing; a price does not
+    spike, it moves, and a name that has crashed from $20 to $2 is a $2 stock today. A 20-day
+    trailing mean would hold it in the universe for roughly ten more sessions, which is exactly
+    the window the table above prices at -9.47%. Churn is handled by the entry buffer instead,
+    which does not delay any exit.
+
+    Args:
+        raw_prices: `(T, N)` unadjusted prices — `Dataset.raw_prices`, never `Dataset.prices`.
+            Typed as optional so `Dataset.raw_prices` can be passed straight through: `None`
+            raises here rather than tempting the caller into the adjusted panel.
+        min_price: The floor, and the exit threshold. A name is dropped on any session its raw
+            price is strictly below this. Inclusive at the boundary: exactly $5.00 clears a
+            $5.00 floor, matching `liquidity_screen`'s `>=`.
+        entry_price: What a non-member must reach to join. Defaults to `1.2 * min_price`. Pass
+            `min_price` itself for a bare floor with no hysteresis, accepting the churn above.
+
+    Returns:
+        `(T, N)` boolean mask. Sessions with no raw price at all are `False` — a missing price is
+        not evidence of clearing the floor — but they do not change membership either way, so a
+        halt does not eject a name that was fine before it and is fine after it.
+    """
+    if raw_prices is None:
+        raise PanelError(
+            "price_floor_screen: no raw price panel. Dataset.raw_prices is None for sources that "
+            "supply no unadjusted series (dataset_from_panels, load_crsp_csv); load_crsp_ciz "
+            "supplies one. Falling back to Dataset.prices is not offered: that panel is a "
+            "total-return index compounded from an arbitrary base, so the floor would drift with "
+            "every split and dividend and would disagree with the tape on 2.54% of liquid "
+            "name-days. A screen that silently measures the wrong thing is worse than no screen, "
+            "because it is reported as applied and removes nothing."
+        )
+    if not np.isfinite(min_price) or min_price < 0:
+        raise PanelError(
+            f"min_price must be finite and >= 0, got {min_price}. A negative floor admits "
+            f"exactly the rows a price panel uses to mean 'no trade happened'."
+        )
+
+    enter_at = entry_price if entry_price is not None else min_price * 1.2
+    if not np.isfinite(enter_at) or enter_at < min_price:
+        raise PanelError(
+            f"entry_price {enter_at} must be finite and >= min_price {min_price}: a name would "
+            f"have to be cheaper to join than to stay, which inverts the hysteresis and makes "
+            f"boundary churn worse rather than better."
+        )
+
+    price = raw_prices.values
+    priced = np.isfinite(price)
+    # NaN compares False both ways, so a missing price neither admits nor ejects. It is masked
+    # out below on its own session and leaves membership untouched.
+    joining = price >= enter_at
+    leaving = price < min_price
+
+    mask = np.zeros(price.shape, dtype=bool)
+    member = np.zeros(raw_prices.n_assets, dtype=bool)
+    for row in range(raw_prices.n_times):
+        member = (member | joining[row]) & ~leaving[row]
+        mask[row] = member & priced[row]
     return mask
 
 

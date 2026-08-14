@@ -10,7 +10,7 @@ hypothesis has been registered** — deliberately, because a backtest run before
 fixed is a trial that raises the deflation bar for whatever is eventually claimed.
 
 ```
-350 tests · ruff + mypy strict clean (package AND scripts) · public at github.com/Dera219/crucible
+367 tests · ruff + mypy strict clean (package AND scripts) · public at github.com/Dera219/crucible
 ```
 
 ## The data
@@ -123,6 +123,16 @@ carries the previous price forward and `investable` only asks whether the price 
 fabricated `NT` day loaded at 10.10, fully tradable. All eight non-`TR` flags are now withdrawn;
 9 flag tests total.
 
+**Check before relying on this: the `crsp_daily.csv` currently in the repo root does NOT carry a
+`DlyPrcFlg` column** (verified 2026-08-14 — its 18 columns are PERMNO, HdrCUSIP, PrimaryExch,
+USIncFlg, IssuerType, SecurityType, SecuritySubType, ShareType, Ticker, PERMCO, DlyCalDt,
+DlyDelFlg, DlyPrc, DlyCap, DlyRet, DlyVol, DlyPrcVol, ShrOut). The loader code is correct and its
+tests pass; it will simply emit its no-`DlyPrcFlg` warning on this file and treat every priced row
+as investable, which is the state item 5 was written to end. The flag work was verified against
+the 2024 slice and the re-pull described above; whichever file carried the column is not the one
+on disk. Re-pull with `DlyPrcFlg` selected before any result is claimed. As a lower bound on the
+exposure, 0.85% of common-stock rows in this extract have null or zero share volume.
+
 ### 4. Universe churn — RESOLVED
 
 The band was widened empirically, not by taste — churn measured on the real extract at four
@@ -138,6 +148,56 @@ widths (top-1000, daily reconstitution, 2015-2025):
 `liquidity_screen` now defaults to `0.6x/1.6x`: two-thirds less forced trading, membership still
 on target. Wider than that buys little and lets members ride to rank 2000, at which point a
 "top-1000" universe isn't one. The full table is in the docstring.
+
+### 6. Price floor on the RAW tape — ADDED 2026-08-14, uncommitted
+
+`crucible.universe.price_floor_screen` composes with `listing_mask` and `liquidity_screen`
+through `Universe.from_masks`. It is **not** wired into any default: nothing changes unless a
+universe explicitly intersects it, so no existing result moves.
+
+It reads `Dataset.raw_prices` and **raises when that is `None`** rather than falling back to
+`Dataset.prices`. That is the load-bearing part. `prices` is a total-return index compounded from
+each security's first observation, so a "$5 line" on it drifts with every split and dividend:
+measured over 7,698,163 liquid name-days, the adjusted level runs at median 1.00x the raw price
+but p99 3.16x and max 70x, and a $5 adjusted line disagrees with the tape on **195,447 name-days
+across 1,556 securities** — 16,874 of them penny stocks it would admit, 178,573 of them
+reverse-split names above $5 on the tape that it would throw out.
+
+Forward 21-session returns by raw price bucket, >$500k/day, survivorship-free (delisted names
+liquidated at CRSP's `DelRet` and held flat), measured on the loaded extract:
+
+| raw price | annualised | median 21d | delisted within 21d |
+|---|---|---|---|
+| <$1 | −8.75% | −9.47% | 3.05% |
+| $1-2 | +0.55% | −4.80% | 0.51% |
+| $2-5 | +0.80% | −2.83% | 0.46% |
+| $5-10 | +6.50% | −0.31% | 0.51% |
+| $10-30 | +10.39% | +0.35% | 0.56% |
+| $30-100 | +9.92% | +0.69% | 0.39% |
+| >$100 | +11.04% | +0.84% | 0.24% |
+
+Defaults are `min_price=5.0` (where the sign changes: +0.80% → +6.50%) and `entry_price` at
+1.2x that, i.e. **exit at $5.00, join at $6.00**. The buffer is the same hysteresis argument as
+the rank band and was sized the same way — a bare $5 line manufactured **61.2% of the book per
+year** in forced round trips, worse than the 37.7% that got the rank band widened; $6.00 entry
+cuts it to 22.9% for 1.0% of mean membership, and the $5-6 zone it defers is the weakest slice
+above the floor (+2.57% annualised, median −1.58%). Exit is deliberately unbuffered.
+
+Not decayed: splitting at 2020-10-06, every cheap bucket is worse in the second half (<$1 goes
++1.45% → −13.78%, $2-5 goes +9.02% → −4.70%) while $10-30 is flat at ~+10%.
+
+**This is hygiene, not an edge**, and the docstring says so at length. It removes a segment that
+destroyed value; it does not add anything. A strategy that only works with this screen applied
+was short the penny-stock complex, which is expensive to borrow and often un-shortable.
+
+A $10 floor scores better on every line of the table and was refused: cutting a further 10.3% of
+breadth out of a +6.50%/yr bucket is a factor tilt, and a tilt belongs in a registered hypothesis
+where the deflation arithmetic charges for it, not in the universe definition where nothing does.
+
+Left open: `liquidity_screen`'s own `min_price` still applies a trailing average to whatever panel
+it is handed, which for a backtest is the adjusted one. Its default of 5.0 therefore drifts. It is
+documented rather than changed, because changing it would move existing results silently; the
+honest fix is to compose `price_floor_screen` and pass `min_price=0.0` to `liquidity_screen`.
 
 ## The two bugs found in the last hour, for context on how to work here
 

@@ -169,16 +169,17 @@ class Dataset:
     prices: Panel
     dollar_volume: Panel
     returns: Panel
-    #: Unadjusted price, as the vendor reported it. Only for screens that care about the actual
-    #: traded level — a penny stock is a penny stock regardless of how its history is adjusted.
-    #: Never use this to compute returns.
     #: `{permno: (first_tradable, last_tradable)}`
     listings: dict[str, tuple[date | None, date | None]]
     #: `{permno: realised return on delisting}`. Frequently large and negative.
     delisting_returns: dict[str, float]
     #: Unadjusted price, as the vendor reported it. Only for screens that care about the actual
     #: traded level — a penny stock is a penny stock regardless of how its history is adjusted.
-    #: Never use this to compute returns.
+    #: Never use this to compute returns. `crucible.universe.price_floor_screen` is the caller
+    #: that needs it, and it raises rather than accept `prices` in its place: a dollar floor on
+    #: the adjusted panel drifts with every split and stops meaning the number it was given.
+    #: `None` for loaders with no unadjusted series to give — `load_crsp_csv`, whose price panel
+    #: is itself unadjusted, and `dataset_from_panels`, which cannot know what it was handed.
     raw_prices: Panel | None = None
     #: `{permno: most recent ticker}`. A label only — never a key.
     tickers: dict[str, str] = field(default_factory=dict)

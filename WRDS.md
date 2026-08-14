@@ -46,25 +46,44 @@ filled. Without it every quoted session looks tradable, and the loader warns abo
 
 #### What `DlyPrcFlg` actually contains
 
-Cross-tabulated against a whole-market 2024 extract (WRDS query 11568315, 2,404,143 rows) rather
-than taken from the documentation, because the loader's behaviour hangs off these values:
+Cross-tabulated against the whole-market 2015-2025 extract (WRDS query 11570520, 23,101,820
+rows) rather than taken from the documentation, because the loader's behaviour hangs off these
+values. An earlier single-year check (2024) missed one flag entirely — see `HA` below.
 
-| Flag | Rows | Delisting? | Volume | Verdict |
-|---|---|---|---|---|
-| `TR` | 2,355,265 | no | median 109,530 | a trade. Tradable |
-| `BA` | 44,396 | no | median 0 | bid/ask average — quote, not a fill |
-| `NT` | 3,132 | no | none | no price at all; already non-investable |
-| `SU` | 513 | no | none | suspended; no price |
-| `DA` | 501 | **100% yes** | none | delisting amount, **`DlyPrc` = 0.0 in all 501** |
-| `DP` | 248 | **100% yes** | none | delisting payment |
-| `DM` | 49 | yes | none | no price |
-| `MP` | 39 | no | none | no price |
+| Flag | Rows | Delisting | Volume | Price | Return | Verdict |
+|---|---|---|---|---|---|---|
+| `TR` | 22,397,840 | none | median 132,476 | yes | yes | a trade. Tradable |
+| `BA` | 595,088 | none | median 0 | yes | yes | bid/ask average — quote, not a fill |
+| `NT` | 95,765 | none | none | none | none | no trade |
+| `DA` | 5,393 | **100%** | none | **all 0.0** | yes | delisting amount |
+| `SU` | 4,662 | none | none | none | none | suspended |
+| `MP` | 1,634 | none | none | none | none | missing price |
+| `DP` | 1,238 | **100%** | none | yes | yes | delisting payment |
+| `DM` | 125 | 100% | none | none | none | delisting, no price |
+| `HA` | 75 | none | none | none | none | halted |
 
-`BA` was the documented assumption and it held. `DA` and `DP` were not: both are payouts rather
-than market prices, both carry no volume, and both are — in every single case — the security's
-final row. Left investable, that terminal payment became the last tradable session and pre-empted
-the delisting return from the authoritative delisting table. All three are now withdrawn from
-investability by `CIZ_NON_TRADED_PRICE_FLAGS`.
+All eight non-`TR` values are withdrawn from investability by `CIZ_NON_TRADED_PRICE_FLAGS`.
+
+Three things this table settled that reading the documentation did not:
+
+**`BA` was right.** The original assumption held at eleven-year scale: 595,088 rows, not one of
+them a delisting, median volume zero.
+
+**`DA` and `DP` are payouts, not prices.** Both are 100% delisting rows with no volume, and both
+are in every single case the security's final row — `DA` with a literal price of `0.0`. Left
+investable, that terminal payout became the security's last tradable session and pre-empted the
+delisting return the delisting table exists to supply.
+
+**`NT`, `SU`, `MP` and `HA` were investable, and that is not obvious.** All four carry null
+price, null volume AND null return. They look untradable and were not: the adjusted series is
+compounded from `DlyRet` with `fill_null(0.0)`, so a null return reads as "no move", the previous
+price carries forward, and `investable` — which asks only whether the price is non-NaN — answers
+yes. `DlyPrc` never enters into it. A fabricated `NT` session came out of the loader priced at
+10.10 and fully tradable.
+
+`HA` appears 75 times in eleven years and **zero times in 2024**. It is the argument for pulling
+the full history rather than a representative year: a single year cannot show you a flag that
+year did not happen to use.
 Delisting returns are a separate query in CIZ (**Stock Delisting Information**, joined on
 PERMNO) — pass it as `delisting_path`.
 

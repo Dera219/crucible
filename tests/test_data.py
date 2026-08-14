@@ -668,3 +668,59 @@ class TestCIZDelistingPaymentFlags:
 
         assert not np.isnan(dataset.prices.values[4, 0])
         assert int(dataset.prices.investable[:, 0].sum()) == 5
+
+
+class TestCIZNonTradingSessions:
+    """'NT', 'SU', 'MP' and 'HA' are sessions that did not happen.
+
+    Every one of the 102,261 such rows in the 2015-2025 extract (WRDS query 11570520) is null
+    in DlyPrc, DlyVol AND DlyRet. They look self-evidently untradable and were not: the
+    adjusted series is compounded from DlyRet with fill_null(0.0), so a null return reads as
+    "no move", the previous price carries forward, and `investable` — which asks only whether
+    the price is non-NaN — answers yes. Measured before the fix, a no-trade session came out
+    priced at 10.10 and fully tradable.
+    """
+
+    @staticmethod
+    def write(tmp_path: Path, flag: str) -> Path:
+        rows = []
+        for i in range(5):
+            hit = i == 2
+            rows.append(
+                {
+                    "PERMNO": 40000,
+                    "DlyCalDt": (date(2023, 1, 2) + timedelta(days=i)).isoformat(),
+                    # Exactly what CRSP records for these flags: nothing at all.
+                    "DlyPrc": None if hit else 10.0,
+                    "DlyPrcVol": None if hit else 1e6,
+                    "DlyRet": "" if (i == 0 or hit) else "0.010000",
+                    "DlyPrcFlg": flag if hit else "TR",
+                }
+            )
+        path = tmp_path / f"{flag.lower()}.csv"
+        pl.DataFrame(rows).write_csv(path)
+        return path
+
+    @staticmethod
+    def load(path: Path) -> Dataset:
+        return load_crsp_ciz(path, share_types=None, exchanges=None, common_shares_only=False)
+
+    @pytest.mark.parametrize("flag", ["NT", "SU", "MP", "HA"])
+    def test_a_session_that_did_not_happen_is_not_investable(
+        self, tmp_path: Path, flag: str
+    ) -> None:
+        dataset = self.load(self.write(tmp_path, flag))
+
+        assert np.isnan(dataset.prices.values[2, 0]), (
+            f"{flag} carried the previous price forward onto a day with no trade, no price "
+            f"and no return"
+        )
+        assert int(dataset.prices.investable[:, 0].sum()) == 4
+
+    def test_a_traded_session_is_untouched(self, tmp_path: Path) -> None:
+        """The control. A null return on a REAL trading day still carries forward — that is
+        the compounding working as intended, and only the flag distinguishes the two."""
+        dataset = self.load(self.write(tmp_path, "TR"))
+
+        assert not np.isnan(dataset.prices.values[2, 0])
+        assert int(dataset.prices.investable[:, 0].sum()) == 5

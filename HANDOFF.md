@@ -10,7 +10,7 @@ hypothesis has been registered** — deliberately, because a backtest run before
 fixed is a trial that raises the deflation bar for whatever is eventually claimed.
 
 ```
-345 tests · ruff + mypy strict clean (package AND scripts) · public at github.com/Dera219/crucible
+350 tests · ruff + mypy strict clean (package AND scripts) · public at github.com/Dera219/crucible
 ```
 
 ## The data
@@ -101,8 +101,15 @@ documentation reading missed — `DA` (501 rows) and `DP` (248) are 100% delisti
 volume, and are in EVERY case the security's final row, `DA` with a literal price of 0.0. Those
 terminal payouts were investable, so each became its security's last tradable session and
 pre-empted the delisting return the delisting table exists to supply. Now withdrawn via
-`CIZ_NON_TRADED_PRICE_FLAGS`; 4 new tests. Caveat worth keeping: this is one year of data, so it
-verifies the flag vocabulary rather than every value CRSP has ever used.
+`CIZ_NON_TRADED_PRICE_FLAGS`.
+
+**Extended to the full 2015-2025 history 2026-08-14** (query 11570520, 23,101,820 rows), which
+found two more things a single year could not. `HA` (halted) exists and never occurred in 2024
+at all. And `NT`/`SU`/`MP`/`HA` — 102,261 rows with null price, null volume AND null return —
+were INVESTABLE, because the series compounds `DlyRet` with `fill_null(0.0)`, so a null return
+carries the previous price forward and `investable` only asks whether the price is non-NaN. A
+fabricated `NT` day loaded at 10.10, fully tradable. All eight non-`TR` flags are now withdrawn;
+9 flag tests total.
 
 ### 4. Universe churn — RESOLVED
 

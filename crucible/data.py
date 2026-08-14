@@ -473,15 +473,32 @@ CIZ_COMMON_STOCK_FILTER: dict[str, tuple[str, ...]] = {
 #: (for `raw_prices` and the dollar-volume fallback) but the session is marked non-investable,
 #: because a midpoint nobody filled is not a price a strategy may transact at.
 #:
-#: VERIFIED against a whole-market 2024 extract (2,404,143 rows, WRDS query 11568315). 'BA' is
-#: 44,396 rows, all `DlyDelFlg='N'`, median volume 0 with two thirds at exactly zero — a real
-#: trading day on which this security did not trade. The documentation was right.
+#: RE-VERIFIED against the whole-market 2015-2025 extract (23,101,820 rows, WRDS query
+#: 11570520). 'BA' is 595,088 rows, ZERO of them delisting, median volume 0 with 74% at exactly
+#: zero — a real trading day on which this security did not trade. The documentation was right,
+#: and it holds for eleven years rather than the one it was first checked against.
 CIZ_QUOTE_ONLY_PRICE_FLAGS = ("BA",)
 
+#: CIZ `dlyprcflg` values marking a session with no trade, no price and NO RETURN at all: 'NT'
+#: (no trade), 'SU' (suspended), 'MP' (missing price), 'HA' (halted). 102,261 rows across
+#: 2015-2025, every one of them null in `DlyPrc`, `DlyVol` AND `DlyRet`.
+#:
+#: These look self-evidently non-investable and were NOT, which is the whole reason this tuple
+#: exists. The adjusted series is compounded from `DlyRet` with `fill_null(0.0)`, so a null
+#: return is read as "no move", the previous price is carried forward, and `investable` — which
+#: asks only whether the price is non-NaN — answers yes. Measured before the fix: a fabricated
+#: 'NT' session came out of the loader priced at 10.10 and fully tradable, on a day the vendor
+#: recorded no trade, no price and no return whatsoever. `DlyPrc` never entered into it.
+#:
+#: 'HA' did not appear at all in the 2024 slice this file was first verified against. It is the
+#: argument for the eleven-year pull: a single year cannot show you a flag that year did not use.
+CIZ_NON_TRADING_SESSION_FLAGS = ("NT", "SU", "MP", "HA")
+
 #: CIZ `dlyprcflg` values marking a delisting payment rather than a market price. Found by the
-#: same 2024 cross-tab, and not in the original reading of the documentation: 'DA' (501 rows) and
-#: 'DP' (248) are 100% `DlyDelFlg='Y'`, carry NO volume at all, and are in every single case the
-#: security's FINAL row. 'DA' is more pointed still — all 501 rows carry `DlyPrc = 0.0`.
+#: same cross-tab, and not in the original reading of the documentation. Across 2015-2025: 'DA'
+#: is 5,393 rows and 'DP' 1,238, both 100% `DlyDelFlg='Y'`, both carrying NO volume at all, and
+#: both in every single case the security's FINAL row. 'DA' is more pointed still — all 5,393
+#: rows carry `DlyPrc = 0.0`. The one-year finding held exactly at eleven-year scale.
 #:
 #: These are what CRSP paid out, not what anyone traded, so they are not prices a strategy may
 #: transact at either. Left investable they did real damage: the terminal payment row became the
@@ -494,9 +511,14 @@ CIZ_QUOTE_ONLY_PRICE_FLAGS = ("BA",)
 CIZ_DELISTING_PAYMENT_PRICE_FLAGS = ("DA", "DP", "DM")
 
 #: Every flag whose price was not the outcome of a trade. The union is what the loader acts on;
-#: the two tuples above stay separate because they are different phenomena that happen to share a
-#: remedy, and a future reader deserves to know which is which.
-CIZ_NON_TRADED_PRICE_FLAGS = CIZ_QUOTE_ONLY_PRICE_FLAGS + CIZ_DELISTING_PAYMENT_PRICE_FLAGS
+#: the three tuples above stay separate because they are different phenomena that happen to share
+#: a remedy, and a future reader deserves to know which is which — a quote nobody filled, a
+#: delisting payout, and a session that did not happen are three different facts about a day.
+CIZ_NON_TRADED_PRICE_FLAGS = (
+    CIZ_QUOTE_ONLY_PRICE_FLAGS
+    + CIZ_NON_TRADING_SESSION_FLAGS
+    + CIZ_DELISTING_PAYMENT_PRICE_FLAGS
+)
 
 
 def load_crsp_ciz(

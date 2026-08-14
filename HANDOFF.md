@@ -10,7 +10,7 @@ hypothesis has been registered** — deliberately, because a backtest run before
 fixed is a trial that raises the deflation bar for whatever is eventually claimed.
 
 ```
-341 tests · ruff + mypy strict clean (package AND scripts) · public at github.com/Dera219/crucible
+345 tests · ruff + mypy strict clean (package AND scripts) · public at github.com/Dera219/crucible
 ```
 
 ## The data
@@ -88,6 +88,21 @@ full-sample series passes through `walk_forward(**backtest_kwargs)` unsliced; `a
 engine intersects it down to each fold's test window. Tested with a planted split — raw prices
 carrying a fake -75% day, vendor series carrying the truth — plus an exact-match check against the
 derived path and a fold pass-through check.
+
+### 5. CIZ price flags — RESOLVED (verified, not assumed)
+
+`CIZ_QUOTE_ONLY_PRICE_FLAGS = ("BA",)` was taken from CRSP's documentation and was the last
+unverified assumption in the loader. Settled by re-pulling a whole-market 2024 extract WITH
+`DlyPrcFlg` (WRDS query 11568315, 2,404,143 rows; Rerun saved as `?saved_query=7651357`) and
+cross-tabbing every flag value against volume and delisting status. Full table in WRDS.md.
+
+`BA` held: 44,396 rows, no delistings, median volume zero. But the cross-tab also found what the
+documentation reading missed — `DA` (501 rows) and `DP` (248) are 100% delisting rows with no
+volume, and are in EVERY case the security's final row, `DA` with a literal price of 0.0. Those
+terminal payouts were investable, so each became its security's last tradable session and
+pre-empted the delisting return the delisting table exists to supply. Now withdrawn via
+`CIZ_NON_TRADED_PRICE_FLAGS`; 4 new tests. Caveat worth keeping: this is one year of data, so it
+verifies the flag vocabulary rather than every value CRSP has ever used.
 
 ### 4. Universe churn — RESOLVED
 

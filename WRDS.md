@@ -43,6 +43,28 @@ default: `sharetype` alone cannot exclude ETFs), and **`DlyPrcFlg`**. That last 
 than it looks: CIZ prices are unsigned, so the legacy "negative PRC means no trade" convention is
 gone and `DlyPrcFlg` is the only way to tell a traded price from a bid/ask midpoint nobody
 filled. Without it every quoted session looks tradable, and the loader warns about exactly that.
+
+#### What `DlyPrcFlg` actually contains
+
+Cross-tabulated against a whole-market 2024 extract (WRDS query 11568315, 2,404,143 rows) rather
+than taken from the documentation, because the loader's behaviour hangs off these values:
+
+| Flag | Rows | Delisting? | Volume | Verdict |
+|---|---|---|---|---|
+| `TR` | 2,355,265 | no | median 109,530 | a trade. Tradable |
+| `BA` | 44,396 | no | median 0 | bid/ask average — quote, not a fill |
+| `NT` | 3,132 | no | none | no price at all; already non-investable |
+| `SU` | 513 | no | none | suspended; no price |
+| `DA` | 501 | **100% yes** | none | delisting amount, **`DlyPrc` = 0.0 in all 501** |
+| `DP` | 248 | **100% yes** | none | delisting payment |
+| `DM` | 49 | yes | none | no price |
+| `MP` | 39 | no | none | no price |
+
+`BA` was the documented assumption and it held. `DA` and `DP` were not: both are payouts rather
+than market prices, both carry no volume, and both are — in every single case — the security's
+final row. Left investable, that terminal payment became the last tradable session and pre-empted
+the delisting return from the authoritative delisting table. All three are now withdrawn from
+investability by `CIZ_NON_TRADED_PRICE_FLAGS`.
 Delisting returns are a separate query in CIZ (**Stock Delisting Information**, joined on
 PERMNO) — pass it as `delisting_path`.
 

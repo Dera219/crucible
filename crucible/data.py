@@ -472,7 +472,31 @@ CIZ_COMMON_STOCK_FILTER: dict[str, tuple[str, ...]] = {
 #: these are treated exactly as the legacy loader treats a negative PRC: the magnitude is kept
 #: (for `raw_prices` and the dollar-volume fallback) but the session is marked non-investable,
 #: because a midpoint nobody filled is not a price a strategy may transact at.
+#:
+#: VERIFIED against a whole-market 2024 extract (2,404,143 rows, WRDS query 11568315). 'BA' is
+#: 44,396 rows, all `DlyDelFlg='N'`, median volume 0 with two thirds at exactly zero — a real
+#: trading day on which this security did not trade. The documentation was right.
 CIZ_QUOTE_ONLY_PRICE_FLAGS = ("BA",)
+
+#: CIZ `dlyprcflg` values marking a delisting payment rather than a market price. Found by the
+#: same 2024 cross-tab, and not in the original reading of the documentation: 'DA' (501 rows) and
+#: 'DP' (248) are 100% `DlyDelFlg='Y'`, carry NO volume at all, and are in every single case the
+#: security's FINAL row. 'DA' is more pointed still — all 501 rows carry `DlyPrc = 0.0`.
+#:
+#: These are what CRSP paid out, not what anyone traded, so they are not prices a strategy may
+#: transact at either. Left investable they did real damage: the terminal payment row became the
+#: security's `last_investable` date, so the engine believed there was one more tradable session
+#: at a payment value (or at zero), and the delisting return that should have come from the
+#: authoritative delisting table was pre-empted by a phantom one. Marking them non-investable
+#: moves the delisting date past `last_investable`, which is precisely the condition the engine's
+#: delisting path waits for. 'DM' carries a null price already; it is named here so the intent is
+#: explicit rather than incidentally true.
+CIZ_DELISTING_PAYMENT_PRICE_FLAGS = ("DA", "DP", "DM")
+
+#: Every flag whose price was not the outcome of a trade. The union is what the loader acts on;
+#: the two tuples above stay separate because they are different phenomena that happen to share a
+#: remedy, and a future reader deserves to know which is which.
+CIZ_NON_TRADED_PRICE_FLAGS = CIZ_QUOTE_ONLY_PRICE_FLAGS + CIZ_DELISTING_PAYMENT_PRICE_FLAGS
 
 
 def load_crsp_ciz(
@@ -626,20 +650,21 @@ def load_crsp_ciz(
         ).alias("_ret"),
     )
 
-    # Non-trading sessions. Applied last, so the quote-day return has already been compounded
-    # into the adjusted series and the quote magnitude has already fed the dollar-volume
-    # fallback — only the tradability of the day itself is withdrawn, exactly as the legacy
-    # loader nulls the price while keeping `_price_magnitude`.
+    # Sessions whose price was not the outcome of a trade — a quote nobody filled, or a
+    # delisting payment. Applied last, so the return has already been compounded into the
+    # adjusted series and the magnitude has already fed the dollar-volume fallback; only the
+    # tradability of the day itself is withdrawn, exactly as the legacy loader nulls the price
+    # while keeping `_price_magnitude`.
     if "dlyprcflg" in frame.columns:
-        quote_only = (
+        not_traded = (
             pl.col("dlyprcflg")
             .cast(pl.Utf8)
             .str.strip_chars()
             .str.to_uppercase()
-            .is_in(list(CIZ_QUOTE_ONLY_PRICE_FLAGS))
+            .is_in(list(CIZ_NON_TRADED_PRICE_FLAGS))
         )
         frame = frame.with_columns(
-            pl.when(quote_only).then(None).otherwise(pl.col("_price")).alias("_price")
+            pl.when(not_traded).then(None).otherwise(pl.col("_price")).alias("_price")
         )
     else:
         warnings.warn(

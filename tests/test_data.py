@@ -617,3 +617,54 @@ class TestCIZNonTradingDays:
 
         # Without the flag every priced row is (unavoidably) treated as investable.
         assert int(dataset.prices.investable[:, 0].sum()) == self.N_ROWS
+
+
+class TestCIZDelistingPaymentFlags:
+    """'DA' and 'DP' are what CRSP paid out, not what anyone traded.
+
+    Found by cross-tabulating a whole-market 2024 extract (WRDS query 11568315, 2,404,143
+    rows): both are 100% `DlyDelFlg='Y'`, carry no volume, and are in every case the
+    security's final row — 'DA' with a literal `DlyPrc` of 0.0. Left investable, that
+    terminal row becomes the security's last tradable session, and the engine's delisting
+    path — which only fires strictly after `last_investable` — is pre-empted by a phantom
+    session priced at a payout.
+    """
+
+    @staticmethod
+    def write(tmp_path: Path, final_flag: str, final_price: float) -> Path:
+        rows = []
+        for i in range(5):
+            rows.append(
+                {
+                    "PERMNO": 40000,
+                    "DlyCalDt": (date(2023, 1, 2) + timedelta(days=i)).isoformat(),
+                    "DlyPrc": final_price if i == 4 else 10.0,
+                    "DlyPrcVol": 1e6,
+                    "DlyRet": "" if i == 0 else "0.010000",
+                    "DlyPrcFlg": final_flag if i == 4 else "TR",
+                }
+            )
+        path = tmp_path / f"{final_flag.lower()}.csv"
+        pl.DataFrame(rows).write_csv(path)
+        return path
+
+    @staticmethod
+    def load(path: Path) -> Dataset:
+        return load_crsp_ciz(path, share_types=None, exchanges=None, common_shares_only=False)
+
+    @pytest.mark.parametrize(("flag", "price"), [("DA", 0.0), ("DP", 0.08), ("DM", 3.5)])
+    def test_a_delisting_payment_is_not_a_tradable_session(
+        self, tmp_path: Path, flag: str, price: float
+    ) -> None:
+        dataset = self.load(self.write(tmp_path, flag, price))
+
+        assert np.isnan(dataset.prices.values[4, 0]), f"{flag} priced a payout as a fill"
+        assert int(dataset.prices.investable[:, 0].sum()) == 4
+
+    def test_a_traded_final_row_stays_investable(self, tmp_path: Path) -> None:
+        """The control. Only the payment flags are withdrawn — a security whose last row is a
+        real trade keeps it, or this fix would be quietly deleting everyone's final session."""
+        dataset = self.load(self.write(tmp_path, "TR", 10.0))
+
+        assert not np.isnan(dataset.prices.values[4, 0])
+        assert int(dataset.prices.investable[:, 0].sum()) == 5

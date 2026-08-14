@@ -33,6 +33,18 @@ Verified properties:
 - SPY, QQQ, IWM, ARKK confirmed absent from the loaded panel
 - **Adjusted prices reproduce CRSP's own `DlyRet` exactly** (0 disagreements >1bp)
 
+## The search log
+
+`SEARCH_LOG.md` records every exploratory look at the data, especially the dead ones. It exists
+because `significance` deflates by trial count and `preregistration.summarize()` reports the
+honest total — and both are defeated by searches that happened and were never written down. An
+exploratory look is a trial the moment the data is queried with an outcome in mind, not when it
+succeeds.
+
+**Three trials are on the budget as of 2026-08-14** (short-horizon reversal, turn-of-month, the
+sub-$5 segment — all dead). Add them to any hypothesis registered against this universe before
+computing a deflated Sharpe.
+
 ## Open items, in priority order
 
 ### 1. The mechanism — the only real blocker

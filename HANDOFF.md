@@ -20,7 +20,7 @@ publishing an extract could cost the university's access for everyone):
 
 | file | rows | contents |
 |---|---|---|
-| `crsp_daily.csv` | 23,101,820 | 2.4 GB · CIZ format + classification columns · 2015-01-02 → 2025-12-31 |
+| `crsp_daily.csv` | 23,101,820 | 2.4 GB · CIZ + classification columns **+ `DlyPrcFlg`** · 2015-01-02 → 2025-12-31 · WRDS query 11570520 |
 | `crsp_delist.csv` | 6,227 | delisting table with `DelRet` |
 
 Loads into `(2766, 6635)` panels after the common-stock filter. Median breadth **3,716
@@ -123,15 +123,16 @@ carries the previous price forward and `investable` only asks whether the price 
 fabricated `NT` day loaded at 10.10, fully tradable. All eight non-`TR` flags are now withdrawn;
 9 flag tests total.
 
-**Check before relying on this: the `crsp_daily.csv` currently in the repo root does NOT carry a
-`DlyPrcFlg` column** (verified 2026-08-14 — its 18 columns are PERMNO, HdrCUSIP, PrimaryExch,
-USIncFlg, IssuerType, SecurityType, SecuritySubType, ShareType, Ticker, PERMCO, DlyCalDt,
-DlyDelFlg, DlyPrc, DlyCap, DlyRet, DlyVol, DlyPrcVol, ShrOut). The loader code is correct and its
-tests pass; it will simply emit its no-`DlyPrcFlg` warning on this file and treat every priced row
-as investable, which is the state item 5 was written to end. The flag work was verified against
-the 2024 slice and the re-pull described above; whichever file carried the column is not the one
-on disk. Re-pull with `DlyPrcFlg` selected before any result is claimed. As a lower bound on the
-exposure, 0.85% of common-stock rows in this extract have null or zero share volume.
+**RESOLVED 2026-08-14 — the repo-root `crsp_daily.csv` now carries `DlyPrcFlg`.** It was replaced
+with the WRDS query 11570520 extract (19 columns; the flag sits at position 14). The superseded
+flagless file is preserved beside it as `crsp_daily_SUPERSEDED_no_flag.csv` and can be deleted —
+both are gitignored by the blanket `*.csv` rule.
+
+Measured on the swap, which is what the flag was worth: the old file marked **10,565,390** cells
+investable and the new one **10,394,463**. The difference — **170,927 name-days** — is sessions a
+strategy could have transacted on where the security did not trade. Twelve more securities are
+also now correctly recognised as delisted, because the `DA`/`DP` payment rows no longer extend a
+name's tradable life past its own delisting. The loader emits no warning on the new file.
 
 ### 4. Universe churn — RESOLVED
 

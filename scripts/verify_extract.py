@@ -45,7 +45,7 @@ from pathlib import Path
 import numpy as np
 
 from crucible.data import DataError, Dataset, load_crsp_ciz, load_crsp_csv
-from crucible.universe import Universe, liquidity_screen, listing_mask
+from crucible.universe import Universe, liquidity_screen, listing_mask, price_floor_screen
 
 
 def _load(daily: Path, delisting: Path | None) -> tuple[Dataset, str]:
@@ -193,12 +193,32 @@ def main(argv: list[str]) -> int:
         )
 
     rule("7. A usable universe, built from this extract")
-    universe = Universe.from_masks(
+    # Two screens, each reading one panel. liquidity_screen no longer carries a price floor: it
+    # applied a trailing mean to whatever panel it was handed, which for a backtest is the
+    # total-return-adjusted one, so its "$5 line" drifted with every split. The floor now comes
+    # from price_floor_screen against the raw tape, and is composed rather than assumed — an
+    # extract that cannot supply a raw panel gets a universe with no floor, and is told so here
+    # rather than finding out from a suspiciously good backtest.
+    screens = [
         listing_mask(data.prices.index, data.assets, data.listings),
-        liquidity_screen(data.dollar_volume, data.prices, top_n=1000),
+        liquidity_screen(data.dollar_volume, top_n=1000),
+    ]
+    if data.raw_prices is not None:
+        screens.append(price_floor_screen(data.raw_prices, min_price=5.0))
+        name = "us-liquid-1000-above-5"
+    else:
+        name = "us-liquid-1000-no-price-floor"
+        findings.append(
+            "this extract carries no raw, unadjusted price panel, so the $5 floor could not be "
+            "applied and the universe in section 7 includes penny stocks. Below $5 on the tape, "
+            "US common stock returned -0.64% annualised over 2015-2025 against +9.85% at or "
+            "above it. Re-pull in CIZ format so load_crsp_ciz can supply Dataset.raw_prices."
+        )
+    universe = Universe.from_masks(
+        *screens,
         index=data.prices.index,
         assets=data.assets,
-        name="us-liquid-1000",
+        name=name,
     )
     print(f"  {universe.audit().summary()}")
 

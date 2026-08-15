@@ -4,7 +4,7 @@ A cross-sectional equity research platform — panel data, a signal algebra, a v
 backtester with square-root market impact, and validation machinery that tries to kill your
 results before you believe them.
 
-**367 tests. ruff + mypy strict clean. And thirteen bugs it caught in its own code, every one
+**372 tests. ruff + mypy strict clean. And thirteen bugs it caught in its own code, every one
 with a green test suite already passing.**
 
 That last number is what this README is about.
@@ -178,7 +178,7 @@ So the core type here is a matrix: rows are timestamps, columns are assets.
 | `engine.py` | Vectorised backtest. Turnover measured against **drifted** weights — target-to-target differencing invented **65%** of turnover that never happened. |
 | `costs.py` | **Square-root** market impact, not linear. Makes capacity a real constraint: a strategy profitable at $10k and ruinous at $1m looks identical under a linear model. |
 | `diagnostics.py` | IC, IC decay, quantile monotonicity, and Grinold's fundamental law — which bounds the Sharpe your breadth can even support. A backtest Sharpe above that ceiling is a bug, not a discovery. |
-| `universe.py` | Point-in-time membership with hysteresis. Without a buffer, universe churn alone generated **~105× book/year** of turnover no signal asked for. `price_floor_screen` composes on top and reads the **raw** tape rather than the adjusted panel — a $5 line drawn on a total-return index drifts with every split and disagrees with the tape on 1,556 securities. Below $5, US common stock returned **−0.64%/yr** over 2015-2025 survivorship-free, against **+9.85%** at or above it. |
+| `universe.py` | Point-in-time membership with hysteresis. Without a buffer, universe churn alone generated **~105× book/year** of turnover no signal asked for. One screen per panel: `liquidity_screen(data.dollar_volume, top_n=1000)` ranks liquidity and `price_floor_screen(data.raw_prices, min_price=5.0)` reads the **raw** tape, composed through `Universe.from_masks`. The floor used to live inside `liquidity_screen`, applied to the adjusted panel — a $5 line drawn on a total-return index drifts with every split and disagreed with the tape on 195,447 name-days across 1,556 securities, mostly by excluding reverse-split names that were genuinely above $5. It was **deleted rather than defaulted to zero**, so `min_price=` is a `TypeError` and nobody loses a filter quietly. Below $5, US common stock returned **−0.64%/yr** over 2015-2025 survivorship-free, against **+9.85%** at or above it. |
 | `walkforward.py` | Folds carry warmup from the training window, so a slow signal is never scored on its own silence. Apex reported a 150-bar signal in 100-bar folds as having *lost* every fold; it had never traded. |
 | `significance.py` | Probabilistic and deflated Sharpe against an honest lifetime trial count. |
 | `preregistration.py` | Kill criteria fixed and hashed before the run. Loosen a threshold and the fingerprint changes, so the softened claim is visibly a different claim. |

@@ -38,16 +38,24 @@ index providers do, for the same reason. The band's width was set by measuring c
 CRSP extract — the numbers are in `liquidity_screen`'s docstring — after the original, narrower
 default was found to manufacture 37.7% of the book per year in forced round trips.
 
-## Screens compose, and one of them has to read a different panel
+## Screens compose, and each one reads only the panel its question is about
 
 Membership is an intersection of masks — a listing calendar, a liquidity rank, a price floor —
-and `Universe.from_masks` takes as many as there are. `price_floor_screen` is the odd one out:
-every other screen reads the same adjusted price panel the engine does, and that one must read
-the vendor's raw, unadjusted panel instead, because a "$5 line" drawn on a total-return index
-drifts away from five dollars with every split and dividend. Measured on the CRSP extract, below
-$5 on the tape US common stock returned **-0.64% annualised with a median 21-day return of
--4.00%** over 2015-2025, survivorship-free; at or above it, +9.85%. Removing that segment is
-hygiene and not an edge, and the function's docstring is at pains to say so.
+and `Universe.from_masks` takes as many as there are. Each screen reads one panel and answers one
+question, which is not decoration: `liquidity_screen` used to carry a `min_price` floor as well,
+applied to whatever price panel it was handed, and what a backtest hands it is the adjusted one.
+A "$5 line" drawn on a total-return index drifts away from five dollars with every split and
+dividend, so the floor stopped meaning the number written in the argument — and it disagreed with
+the tape on 195,447 name-days, mostly by excluding reverse-split names that were genuinely above
+$5. That floor is gone; `price_floor_screen` replaces it and reads the vendor's raw, unadjusted
+panel, refusing to run without one. Measured on the CRSP extract, below $5 on the tape US common
+stock returned **-0.64% annualised with a median 21-day return of -4.00%** over 2015-2025,
+survivorship-free; at or above it, +9.85%. Removing that segment is hygiene and not an edge, and
+the function's docstring is at pains to say so.
+
+The removal was a deliberate break rather than a silent defaulting of `min_price` to zero, for
+the reason recorded in `liquidity_screen`: a call that keeps working while quietly no longer
+filtering anything is the exact shape of failure this library exists to catch.
 
 ## What this module cannot fix
 
@@ -122,35 +130,123 @@ def listing_mask(
 
 def liquidity_screen(
     dollar_volume: Panel,
-    prices: Panel,
     *,
     top_n: int | None = 500,
     min_dollar_volume: float = 1_000_000.0,
-    min_price: float = 5.0,
     window: int = 20,
     entry_rank: int | None = None,
     exit_rank: int | None = None,
 ) -> Mask:
     """Rank-and-threshold assets on trailing liquidity, with hysteresis.
 
-    Every input is a trailing average, never a point observation: a single day's volume spikes on
-    news and a universe built from it churns on noise. Every statistic is computed over a window
-    ending at the current row, so the screen is causal in the same sense as `ts_*` operators.
+    Liquidity, and nothing else. This screen reads one panel and answers one question — how much
+    notional changed hands — and a price floor is now composed alongside it rather than folded
+    into it:
+
+        Universe.from_masks(
+            listing_mask(data.prices.index, data.assets, data.listings),
+            liquidity_screen(data.dollar_volume, top_n=1000),
+            price_floor_screen(data.raw_prices, min_price=5.0),
+            index=data.prices.index,
+            assets=data.assets,
+        )
+
+    Every *statistic* here is a trailing average, never a point observation: a single day's volume
+    spikes on news and a universe built from it churns on noise. Each average is computed over a
+    window ending at the current row, so the screen is causal in the same sense as `ts_*`
+    operators. The one pointwise term is not a statistic but a validity check on the row being
+    decided, and it is argued at the end of this docstring.
+
+    ## The `min_price` floor that used to be here, and why it was deleted rather than defaulted
+
+    This function used to take a `prices` panel and a `min_price=5.0` floor. The floor was wrong
+    in two independent ways, either of which would have been enough on its own.
+
+    **Wrong panel.** It floored whatever panel it was handed, and a backtest naturally hands a
+    universe `Dataset.prices` — which is total-return *adjusted*, a series compounded forward
+    from each security's first observation. A "$5 line" on it is a line on an index, not on
+    dollars. Measured over 7,698,163 liquid name-days of the 2015-2025 CRSP extract, the adjusted
+    level runs at a median of 1.00x the raw price but a p99 of 3.16x and a maximum of 70x, and an
+    adjusted $5 line disagrees with the tape on 195,447 name-days: 16,874 penny stocks admitted,
+    and 178,573 name-days *wrongly excluded* — mostly reverse splits, the corporate action a
+    failing company uses to hold its listing, where the tape jumps 1:10 and the return index does
+    not move at all. The floor's larger error was throwing out names that were genuinely fine.
+
+    **Wrong statistic.** Even handed the correct panel it would still have been wrong, because it
+    took a 20-day trailing mean of it. A name that crashes from $20 to $2 is a $2 stock today,
+    and a trailing mean keeps it above $5 for roughly ten more sessions — exactly the window the
+    same extract prices at a -9.47% median 21-day return. Volume spikes and needs smoothing; a
+    price does not spike, it moves.
+
+    `price_floor_screen`, in this module, does both correctly: the raw panel, point observations,
+    and asymmetric entry/exit thresholds sized against measured churn. Its docstring carries the
+    evidence for the floor itself.
+
+    **The parameter was removed rather than defaulted to 0.0, and that choice is the point worth
+    recording.** Both fix the drift. Defaulting to zero is silent: a caller who composes only
+    `liquidity_screen` keeps a working call, quietly loses their penny-stock filter, and ends up
+    holding sub-$5 names with nothing in the output to say so. Removing it is loud — `min_price=`
+    is now a `TypeError`, the signature change has to be acknowledged, and the caller finds out
+    at the moment they can still do something about it. This is the same doctrine `load_crsp_ciz`
+    states when it refuses to load an extract missing the classification columns rather than
+    silently skipping the common-stock filter, "because silent-skip is how the contamination
+    survived". A screen that stops screening without saying so is the failure mode this library
+    is about.
+
+    ## Dropping the price panel dropped a finiteness check too. What replaced it, and what did not
+
+    Stated because it was measured rather than waved away. The old `eligible` also required
+    `np.isfinite(prices.values)`, which is not a liquidity statement at all — it is the loader's
+    verdict on whether the session was tradable, arriving through a parameter documented as a
+    penny-stock floor. It was load-bearing anyway, and removing the panel removes it.
+
+    `listing_mask` does not cover the gap: listings are `(first, last)` windows, so a non-traded
+    session *inside* a security's listed life is masked `True`. On the same extract, common-stock
+    rows grouped by `DlyPrcFlg` — 10,587,303 name-days, 6,635 securities, 2,766 sessions:
+
+        flag                     rows    DlyPrcVol finite    DlyPrcVol > 0    DlyPrc finite
+        TR   traded        10,414,371          10,414,371       10,414,371       10,414,371
+        BA   quote only       171,197             171,197           83,184          171,197
+        MP/SU/HA                 1,735                   0                0                0
+
+    The non-trading sessions carry no volume at all, so `np.isfinite(dollar_volume.values)` —
+    already present, and kept — removes them without any help from a price panel. The quote-only
+    rows are the real case: CRSP reports a dollar volume on every single one of them, so
+    finiteness of the volume panel says nothing about them.
+
+    So an equivalent guard is sourced from the volume panel instead: the row's own notional must
+    be **strictly positive**. That is a liquidity statement in its own terms — a session on which
+    nothing changed hands is not a liquid session — and it costs nothing, because zero of the
+    10,414,371 traded sessions in this extract report zero notional. It never ejects a name on a
+    day it actually traded, and it recovers 88,013 of the 171,197 quote-only rows.
+
+    **It is not fully equivalent, and pretending otherwise would be the silent failure this whole
+    change is against.** 83,184 quote-only name-days report positive volume against a price
+    nobody filled, and 76,244 of those clear a $5 raw floor as well, so `price_floor_screen` does
+    not catch them either: 0.72% of the extract, across 1,011 securities, is admitted here where
+    the old check excluded it. The exposure is bounded on three sides:
+
+    - The engine cannot transact there regardless. `crucible.engine` zeroes any target weight on
+      a row whose adjusted price is `NaN` and carries an already-held position through the gap
+      untraded, so a midpoint nobody filled cannot become a fill.
+    - What is *not* backstopped is the cross-section. `Universe.apply` blanks the signal outside
+      the universe precisely because a non-member still takes up a rank and shifts every quantile
+      boundary in its row. Any signal derived from the price panel is `NaN` on these rows anyway;
+      one derived from volume, turnover or shares outstanding is not, and it will rank.
+    - These are small days. The median admitted session turns over $437 and only 241 of the
+      76,244 clear $1m, so the distortion sits at the edge of a cross-section rather than in the
+      middle of it. Small is not zero.
+
+    A caller who wants it closed composes the loader's own verdict explicitly, which is what the
+    price argument was doing implicitly and undeclared:
+
+        Universe.from_masks(..., data.prices.investable, index=..., assets=...)
 
     Args:
-        dollar_volume: `(T, N)` traded notional per period.
-        prices: `(T, N)` prices, for the penny-stock floor.
+        dollar_volume: `(T, N)` traded notional per period. The only panel this function reads.
         top_n: Keep roughly this many names. `None` disables the rank screen and keeps every
-            asset clearing the absolute floors.
+            asset clearing the absolute floor.
         min_dollar_volume: Absolute floor on trailing average notional.
-        min_price: Absolute floor on the trailing average of whatever price panel is handed in.
-            Sub-$5 names have wide relative spreads, are often un-shortable, and are where
-            cross-sectional signals go to produce fictional returns. This floor is the coarse
-            one and is not the load-bearing one: the panel a backtest passes here is normally
-            `Dataset.prices`, which is total-return adjusted, so the line drifts with every
-            split and dividend and stops meaning the number written in the argument. Compose
-            `price_floor_screen`, which reads `Dataset.raw_prices` and refuses to run without
-            it, for a floor that means dollars. The measurements are in its docstring.
         window: Trailing periods for the averages.
         entry_rank: Rank a non-member must reach to join. Defaults to `0.6 * top_n`.
         exit_rank: Rank a member must fall past to leave. Defaults to `1.6 * top_n`.
@@ -172,20 +268,18 @@ def liquidity_screen(
     Returns:
         `(T, N)` boolean mask.
     """
-    if dollar_volume.index != prices.index or dollar_volume.assets != prices.assets:
-        raise PanelError("liquidity_screen: dollar_volume and prices must be aligned")
     if top_n is not None and top_n < 1:
         raise PanelError(f"top_n must be >= 1 or None, got {top_n}")
 
     average_volume = dollar_volume.rolling(window, "mean", min_periods=max(2, window // 2))
-    average_price = prices.rolling(window, "mean", min_periods=max(2, window // 2))
 
-    eligible = (
-        (average_volume.values >= min_dollar_volume)
-        & (average_price.values >= min_price)
-        & np.isfinite(dollar_volume.values)
-        & np.isfinite(prices.values)
-    )
+    # Pointwise, not trailing, and deliberately so: whether anything traded is a fact about this
+    # session, not about the last twenty. `isfinite` removes the sessions the vendor left blank;
+    # `> 0` removes the ones it priced from a quote nobody filled. See the docstring for what
+    # this recovers of the check that left with the price panel, and what it does not.
+    traded = np.isfinite(dollar_volume.values) & (dollar_volume.values > 0.0)
+
+    eligible = (average_volume.values >= min_dollar_volume) & traded
 
     if top_n is None:
         return eligible
@@ -346,11 +440,13 @@ def price_floor_screen(
     cross-sectional signal from spending its breadth on names whose prices are not really prices.
 
     Point observations are used, not trailing averages — the reverse of `liquidity_screen`'s
-    rule, and for a stated reason. Volume spikes on news and needs smoothing; a price does not
-    spike, it moves, and a name that has crashed from $20 to $2 is a $2 stock today. A 20-day
-    trailing mean would hold it in the universe for roughly ten more sessions, which is exactly
-    the window the table above prices at -9.47%. Churn is handled by the entry buffer instead,
-    which does not delay any exit.
+    rule for its own statistics, and for a stated reason. Volume spikes on news and needs
+    smoothing; a price does not spike, it moves, and a name that has crashed from $20 to $2 is a
+    $2 stock today. A 20-day trailing mean would hold it in the universe for roughly ten more
+    sessions, which is exactly the window the table above prices at -9.47%. That is not a
+    hypothetical: `liquidity_screen`'s deleted `min_price` floor took the trailing mean, and
+    holding the crashed name for those ten sessions is half of why it was removed. Churn is
+    handled by the entry buffer instead, which does not delay any exit.
 
     Args:
         raw_prices: `(T, N)` unadjusted prices — `Dataset.raw_prices`, never `Dataset.prices`.
@@ -358,7 +454,10 @@ def price_floor_screen(
             raises here rather than tempting the caller into the adjusted panel.
         min_price: The floor, and the exit threshold. A name is dropped on any session its raw
             price is strictly below this. Inclusive at the boundary: exactly $5.00 clears a
-            $5.00 floor, matching `liquidity_screen`'s `>=`.
+            $5.00 floor, pinned so that no caller has to reason about a cent. This is the only
+            price floor in the module — `liquidity_screen` carried a second one until it was
+            found to be measuring the adjusted panel, and it was deleted rather than defaulted
+            away so that the change could not pass unnoticed.
         entry_price: What a non-member must reach to join. Defaults to `1.2 * min_price`. Pass
             `min_price` itself for a bare floor with no hysteresis, accepting the churn above.
 

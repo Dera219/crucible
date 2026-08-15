@@ -100,7 +100,7 @@ five-year slices and concatenate — `load_crsp_csv` does not care how the file 
 
 ```python
 from crucible.data import load_crsp_csv
-from crucible.universe import Universe, listing_mask, liquidity_screen
+from crucible.universe import Universe, listing_mask, liquidity_screen, price_floor_screen
 
 data = load_crsp_csv("crsp_daily.csv")
 print(data.summary())          # read this before anything else
@@ -113,12 +113,22 @@ downstream can recover the missing names.
 ```python
 universe = Universe.from_masks(
     listing_mask(data.prices.index, data.assets, data.listings),
-    liquidity_screen(data.dollar_volume, data.prices, top_n=1000),
+    liquidity_screen(data.dollar_volume, top_n=1000),
+    price_floor_screen(data.raw_prices, min_price=5.0),
     index=data.prices.index,
     assets=data.assets,
 )
 print(universe.audit().summary())
 ```
+
+Each screen reads one panel and answers one question. `liquidity_screen` used to take a `prices`
+panel and a `min_price` floor as well; it applied a trailing mean to whatever panel it was
+handed, and what a backtest hands it is the **adjusted** one, so the "$5 line" drifted with every
+split. **That is now a `TypeError`, deliberately** — see the note in `HANDOFF.md`. The floor
+comes from `price_floor_screen` against the raw tape instead, and `load_crsp_csv` returns
+`raw_prices=None`, so on a legacy SIZ extract that third line raises with a message saying why,
+rather than quietly measuring the wrong panel. Pull in CIZ format (the section above) and use
+`load_crsp_ciz` if you want the floor; drop the line if you accept a universe without one.
 
 Then a signal, checked for causality before it is ever backtested:
 

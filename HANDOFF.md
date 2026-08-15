@@ -10,7 +10,7 @@ hypothesis has been registered** — deliberately, because a backtest run before
 fixed is a trial that raises the deflation bar for whatever is eventually claimed.
 
 ```
-367 tests · ruff + mypy strict clean (package AND scripts) · public at github.com/Dera219/crucible
+372 tests · ruff + mypy strict clean (package AND scripts) · public at github.com/Dera219/crucible
 ```
 
 ## The data
@@ -156,6 +156,10 @@ on target. Wider than that buys little and lets members ride to rank 2000, at wh
 through `Universe.from_masks`. It is **not** wired into any default: nothing changes unless a
 universe explicitly intersects it, so no existing result moves.
 
+> Superseded in part by **item 7** below, later the same day: `liquidity_screen`'s own price
+> floor has since been removed, so `price_floor_screen` is now the module's only one and a
+> universe that wants a floor must intersect it. Read item 7 before acting on this one.
+
 It reads `Dataset.raw_prices` and **raises when that is `None`** rather than falling back to
 `Dataset.prices`. That is the load-bearing part. `prices` is a total-return index compounded from
 each security's first observation, so a "$5 line" on it drifts with every split and dividend:
@@ -195,10 +199,58 @@ A $10 floor scores better on every line of the table and was refused: cutting a 
 breadth out of a +6.50%/yr bucket is a factor tilt, and a tilt belongs in a registered hypothesis
 where the deflation arithmetic charges for it, not in the universe definition where nothing does.
 
-Left open: `liquidity_screen`'s own `min_price` still applies a trailing average to whatever panel
-it is handed, which for a backtest is the adjusted one. Its default of 5.0 therefore drifts. It is
-documented rather than changed, because changing it would move existing results silently; the
-honest fix is to compose `price_floor_screen` and pass `min_price=0.0` to `liquidity_screen`.
+### 7. `liquidity_screen`'s own price floor — REMOVED, BREAKING, 2026-08-14, uncommitted
+
+This was item 6's "left open". `liquidity_screen` no longer takes `prices` or `min_price`. Both
+parameters are **deleted**, so the old call is a `TypeError`. Migration:
+
+```python
+# before
+liquidity_screen(data.dollar_volume, data.prices, top_n=1000)          # min_price=5.0 implied
+
+# after — two screens, each reading one panel, composed through Universe.from_masks
+liquidity_screen(data.dollar_volume, top_n=1000)
+price_floor_screen(data.raw_prices, min_price=5.0)
+```
+
+The floor was wrong twice over. **Wrong panel**: it floored whatever it was handed, and a
+backtest hands a universe `Dataset.prices`, which is total-return adjusted — p99 3.16x the raw
+price, max 70x, disagreeing with the tape on 195,447 name-days, and the larger half of that
+(178,573) is names it *wrongly excluded* for having reverse-split. **Wrong statistic**: it took a
+20-day trailing mean, so a name crashing $20 → $2 stayed above the line for ~10 more sessions,
+which is the window the extract prices at a −9.47% median 21-day return. `price_floor_screen`
+already does both correctly.
+
+**Deleted rather than defaulted to 0.0, and that is the recorded decision.** Both fix the drift.
+Zero is silent — a caller composing only `liquidity_screen` keeps a working call and quietly
+stops filtering penny stocks. Deletion is loud: the signature change has to be acknowledged. Same
+doctrine as `load_crsp_ciz` refusing an extract without the classification columns, "because
+silent-skip is how the contamination survived".
+
+**One real loosening, measured, not hand-waved.** `eligible` also required
+`np.isfinite(prices.values)` — the loader's tradability verdict smuggled in through a parameter
+documented as a price floor. `listing_mask` does not cover it (listings are `(first, last)`
+windows; a non-traded session sits inside one). The replacement guard is sourced from the volume
+panel: the row's own notional must be **strictly positive**. By `DlyPrcFlg` over 10,587,303
+common-stock name-days:
+
+| flag | rows | `DlyPrcVol` finite | `> 0` | `DlyPrc` finite |
+|---|---|---|---|---|
+| `TR` traded | 10,414,371 | 10,414,371 | 10,414,371 | 10,414,371 |
+| `BA` quote only | 171,197 | 171,197 | 83,184 | 171,197 |
+| `MP`/`SU`/`HA` | 1,735 | 0 | 0 | 0 |
+
+The guard is free (no traded session reports zero notional) and recovers 88,013 of the 171,197
+quote-only rows. It does **not** recover 83,184 of them — CRSP reports volume against a price
+nobody filled — and 76,244 of those clear a $5 raw floor too, so `price_floor_screen` misses them
+as well. That is 0.72% of the extract across 1,011 securities now admitted where it was not.
+Bounded: the engine zeroes any target weight on a NaN-priced row, so no fill can happen; the
+residual risk is cross-sectional, since a volume-derived signal still ranks on those rows.
+A caller who needs it closed composes `data.prices.investable` as one more mask — which is what
+the price argument was doing implicitly and undeclared. Pinned by a test either way.
+
+`scripts/verify_extract.py` composes the floor when the extract can supply a raw panel and adds a
+finding when it cannot, rather than silently building a universe without one.
 
 ## The two bugs found in the last hour, for context on how to work here
 

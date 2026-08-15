@@ -91,23 +91,10 @@ class TestLiquidityScreen:
         volume = volumes()
         quiet = volume.values.copy()
         quiet[:, 0] = 1_000.0
-        mask = liquidity_screen(
-            volume.with_values(quiet), flat_prices(), top_n=None, min_dollar_volume=1e6
-        )
+        mask = liquidity_screen(volume.with_values(quiet), top_n=None, min_dollar_volume=1e6)
 
         assert not mask[-1, 0]
         assert mask[-1, 1]
-
-    def test_penny_stocks_are_excluded(self) -> None:
-        """Sub-$5 names have wide relative spreads, are often un-shortable, and are where
-        cross-sectional signals go to produce fictional returns."""
-        prices = flat_prices().values.copy()
-        prices[:, 0] = 2.0
-        mask = liquidity_screen(
-            volumes(), flat_prices().with_values(prices), top_n=None, min_price=5.0
-        )
-
-        assert not mask[-1, 0]
 
     def test_the_screen_uses_trailing_averages_not_point_observations(self) -> None:
         """A single day's volume spikes on news; a universe built from it churns on noise."""
@@ -116,7 +103,6 @@ class TestLiquidityScreen:
         volume[150, 0] = 1e12  # one enormous day
         mask = liquidity_screen(
             volumes().with_values(volume),
-            flat_prices(),
             top_n=None,
             min_dollar_volume=1e6,
             window=20,
@@ -127,29 +113,125 @@ class TestLiquidityScreen:
         assert not mask[-1, 0]
 
     def test_top_n_limits_membership(self) -> None:
-        mask = liquidity_screen(
-            volumes(), flat_prices(), top_n=10, min_dollar_volume=0, min_price=0
-        )
+        mask = liquidity_screen(volumes(), top_n=10, min_dollar_volume=0)
 
         assert mask[-1].sum() <= 15  # top_n plus the hysteresis band
 
-    def test_top_n_none_keeps_everything_clearing_the_floors(self) -> None:
-        mask = liquidity_screen(
-            volumes(), flat_prices(), top_n=None, min_dollar_volume=0, min_price=0
-        )
+    def test_top_n_none_keeps_everything_clearing_the_floor(self) -> None:
+        mask = liquidity_screen(volumes(), top_n=None, min_dollar_volume=0)
 
         assert mask[-1].all()
 
     def test_inverted_hysteresis_is_refused(self) -> None:
         """A name would need to be more liquid to stay than to join, which makes churn worse."""
         with pytest.raises(PanelError, match="inverts the hysteresis"):
-            liquidity_screen(volumes(), flat_prices(), top_n=30, entry_rank=40, exit_rank=20)
+            liquidity_screen(volumes(), top_n=30, entry_rank=40, exit_rank=20)
 
-    def test_misaligned_inputs_are_refused(self) -> None:
-        other = Panel(np.ones((N_TIMES, N_ASSETS)), INDEX, tuple(f"B{i}" for i in range(N_ASSETS)))
 
-        with pytest.raises(PanelError, match="must be aligned"):
-            liquidity_screen(volumes(), other)
+class TestTheScreenScreensOnlyLiquidity:
+    """The `min_price` floor was deleted from `liquidity_screen`, not defaulted to zero.
+
+    It measured a trailing mean of whatever price panel it was handed, and what a backtest hands
+    a universe is the total-return-adjusted one — so the "$5 line" drifted with every split and
+    disagreed with the tape on 195,447 name-days, mostly by excluding reverse-split names that
+    were genuinely above $5. `price_floor_screen` does the job correctly. Defaulting the argument
+    to 0.0 would have fixed the drift just as well and told nobody: a caller composing only
+    `liquidity_screen` would keep a working call and quietly stop filtering penny stocks.
+    """
+
+    def test_asking_for_a_price_floor_here_is_a_TypeError_and_not_a_silent_no_op(self) -> None:
+        """The loudness is the feature. This is the same doctrine `load_crsp_ciz` states when it
+        refuses an extract missing its classification columns rather than skipping the filter."""
+        with pytest.raises(TypeError, match="min_price"):
+            liquidity_screen(volumes(), top_n=None, min_price=5.0)  # type: ignore[call-arg]
+
+    def test_handing_it_a_price_panel_is_a_TypeError_too(self) -> None:
+        """The old signature took `prices` positionally, so the migration's most likely mistake
+        is leaving it in place. It fails at the call rather than being silently ignored."""
+        with pytest.raises(TypeError, match="positional"):
+            liquidity_screen(volumes(), flat_prices())  # type: ignore[call-arg]
+
+    def test_a_penny_stock_now_passes_liquidity_and_is_stopped_by_the_price_floor(self) -> None:
+        """What the migration has to preserve, end to end: the composition still excludes the
+        name, and the screen that excludes it is the one reading the raw tape."""
+        tape = np.full((N_TIMES, N_ASSETS), 50.0)
+        tape[:, 0] = 2.0
+
+        liquid = liquidity_screen(volumes(), top_n=None, min_dollar_volume=0)
+        floored = price_floor_screen(raw_prices(tape), min_price=5.0)
+
+        assert liquid[-1, 0], "liquidity_screen should no longer have an opinion about price"
+        assert not floored[-1, 0]
+        assert not (liquid & floored)[-1, 0]
+
+
+class TestNonTradedSessions:
+    """The finiteness check that left with the price panel, and the guard that replaced it.
+
+    `eligible` used to require `np.isfinite(prices.values)` — the loader's tradability verdict,
+    arriving through a parameter documented as a penny-stock floor. `listing_mask` cannot cover
+    it, because listings are `(first, last)` windows and a non-traded session sits inside one. So
+    an equivalent guard is sourced from the volume panel instead: the row's own notional must be
+    strictly positive.
+
+    Measured on the 2015-2025 CRSP extract, 10,587,303 common-stock name-days by `DlyPrcFlg`:
+    every one of the 10,414,371 traded sessions reports positive notional, so the guard is free;
+    the 1,735 no-trade sessions report none at all and were already caught by `isfinite`; and of
+    the 171,197 quote-only sessions it recovers 88,013. It does not recover all of them, and the
+    docstring says so rather than claiming equivalence it does not have.
+    """
+
+    def test_a_session_with_no_notional_at_all_is_not_a_liquid_session(self) -> None:
+        """The replacement guard. A zero-volume row is ejected on its own session, which is what
+        the vendor's no-trade flags look like once they reach the volume panel."""
+        volume = volumes().values.copy()
+        volume[150, 0] = 0.0
+
+        mask = liquidity_screen(volumes().with_values(volume), top_n=None, min_dollar_volume=0)
+
+        assert not mask[150, 0]
+        assert mask[149, 0]
+
+    def test_a_missing_notional_is_not_a_liquid_session_either(self) -> None:
+        volume = volumes().values.copy()
+        volume[150, 0] = np.nan
+
+        mask = liquidity_screen(volumes().with_values(volume), top_n=None, min_dollar_volume=0)
+
+        assert not mask[150, 0]
+
+    def test_the_guard_costs_nothing_on_a_session_that_actually_traded(self) -> None:
+        """Zero of the 10,414,371 traded sessions in the extract report zero notional, so this
+        never ejects a name on a day it changed hands — however little it changed hands."""
+        volume = volumes().values.copy()
+        volume[150, 0] = 1e-9
+
+        mask = liquidity_screen(volumes().with_values(volume), top_n=None, min_dollar_volume=0)
+
+        assert mask[150, 0]
+
+    def test_a_quote_only_session_with_volume_is_admitted_and_the_engine_is_the_backstop(
+        self,
+    ) -> None:
+        """The case the guard does NOT recover, pinned so it cannot be forgotten: 83,184 name-days
+        of the extract are priced from a quote nobody filled yet report positive volume, and
+        76,244 of those clear a $5 raw floor too. `liquidity_screen` now admits them.
+
+        It is bounded by the engine, which zeroes any target weight on a row whose adjusted price
+        is NaN, so the fill cannot happen. What is not bounded is the cross-section, and a caller
+        who needs that closed composes the loader's own verdict — `data.prices.investable` — as
+        one more mask, which is what the price argument was doing implicitly and undeclared.
+        """
+        adjusted = flat_prices().values.copy()
+        adjusted[150, 0] = np.nan  # quote-only: CRSP still reports the day's notional
+        prices = flat_prices().with_values(adjusted)
+
+        admitted = liquidity_screen(volumes(), top_n=None, min_dollar_volume=0)
+        assert admitted[150, 0], "the screen no longer reads a price panel, so it cannot know"
+
+        closed = Universe.from_masks(admitted, prices.investable, index=INDEX, assets=ASSETS)
+        assert not closed.mask[150, 0]
+        assert closed.mask[149, 0]
 
 
 class TestHysteresis:
@@ -157,13 +239,7 @@ class TestHysteresis:
 
     def test_a_buffer_dramatically_reduces_churn(self) -> None:
         volume = volumes(boundary_names=25)
-        common = {
-            "prices": flat_prices(),
-            "top_n": 20,
-            "min_dollar_volume": 0.0,
-            "min_price": 0.0,
-            "window": 5,
-        }
+        common = {"top_n": 20, "min_dollar_volume": 0.0, "window": 5}
 
         none = Universe(
             liquidity_screen(volume, entry_rank=20, exit_rank=20, **common), INDEX, ASSETS
@@ -177,13 +253,7 @@ class TestHysteresis:
 
     def test_the_buffer_widens_monotonically(self) -> None:
         volume = volumes(boundary_names=25)
-        common = {
-            "prices": flat_prices(),
-            "top_n": 20,
-            "min_dollar_volume": 0.0,
-            "min_price": 0.0,
-            "window": 5,
-        }
+        common = {"top_n": 20, "min_dollar_volume": 0.0, "window": 5}
 
         churn = [
             Universe(
@@ -203,10 +273,8 @@ class TestHysteresis:
         volume = volumes(boundary_names=25)
         mask = liquidity_screen(
             volume,
-            flat_prices(),
             top_n=20,
             min_dollar_volume=0.0,
-            min_price=0.0,
             window=5,
             entry_rank=14,
             exit_rank=30,
@@ -233,8 +301,9 @@ class TestPriceFloor:
         assert mask[:, 1:].all()
 
     def test_the_floor_is_inclusive_at_the_boundary(self) -> None:
-        """Pinned deliberately: exactly $5.00 clears a $5.00 floor, matching the `>=` that
-        liquidity_screen already uses, so the two floors cannot disagree about the same cent."""
+        """Pinned deliberately: exactly $5.00 clears a $5.00 floor. This is now the module's only
+        price floor — liquidity_screen carried a second one until it was found to be measuring
+        the adjusted panel — so no caller has to reason about which of two owns a given cent."""
         at_the_line = np.full((N_TIMES, N_ASSETS), 5.0)
         one_cent_under = np.full((N_TIMES, N_ASSETS), 4.99)
 
@@ -396,9 +465,7 @@ class TestPriceFloor:
 
         universe = Universe.from_masks(
             listing_mask(INDEX, ASSETS, dict.fromkeys(ASSETS, (None, None))),
-            liquidity_screen(
-                volumes(), flat_prices(), top_n=None, min_dollar_volume=0.0, min_price=0.0
-            ),
+            liquidity_screen(volumes(), top_n=None, min_dollar_volume=0.0),
             price_floor_screen(raw_prices(tape), min_price=5.0),
             index=INDEX,
             assets=ASSETS,
@@ -521,9 +588,7 @@ class TestEndToEnd:
         }
         universe = Universe.from_masks(
             listing_mask(INDEX, ASSETS, listings),
-            liquidity_screen(
-                volumes(), flat_prices(), top_n=20, min_dollar_volume=0.0, min_price=0.0
-            ),
+            liquidity_screen(volumes(), top_n=20, min_dollar_volume=0.0),
             index=INDEX,
             assets=ASSETS,
             name="us-liquid",

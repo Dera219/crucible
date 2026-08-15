@@ -220,3 +220,49 @@ CRSP daily data begins in 1925 and the subscription almost certainly reaches bac
 earlier start date, covering the dot-com peak and bust, the financial crisis, the ZIRP decade and
 the 2022 inflation shock. Until then, a negative result here means "not in this regime" and
 should be recorded as such rather than as "does not work".
+
+---
+
+## 2026-08-15 — the regime question, answered
+
+Look 5 was re-run per era on deeper history (WRDS slices 1990-1994, 1995-1999, 2005-2009 plus the
+existing 2015-2025), with two corrections that both cut AGAINST the result worth wanting:
+
+- **A real-terms price floor.** The original $5 was nominal, so early eras screened out roughly
+  twice as much of the market as late ones and the samples were never comparable. The floor is
+  now deflated by CPI to constant 2025 dollars — $2.18 in 1990-1994 against $4.23 in 2015-2025.
+- **Newey-West t-statistics, 21 lags.** Overlapping 21-day windows are autocorrelated, and an
+  uncorrected t overstates significance by roughly the square root of the overlap.
+
+| era | Q0 liquid | Q4 illiquid | Q4-Q0 | t |
+|---|---|---|---|---|
+| 1990-1994 | 12.9% | **23.1%** | **+9.1pp** | 2.07 |
+| 1995-1999 | 23.8% | 22.8% | -0.8pp | -0.17 |
+| 2005-2009 | 4.7% | 5.3% | +0.6pp | 0.15 |
+| 2015-2025 | 13.0% | **4.8%** | **-7.3pp** | **-2.87** |
+
+**The real floor changed nothing material** (+9.7pp to +9.1pp), so the original screen was not
+driving the early result — worth knowing, since that was the flaw most likely to have manufactured
+it.
+
+**Conclusion, stated at the strength the evidence supports.** The modern penalty is robust: t of
+-2.87 on the largest sample, monotone across all five quintiles. The 1990s premium is suggestive
+only: t of 2.07 clears 1.96, but FOUR eras were tested and one significant result in four is
+roughly what chance produces from nothing. Under a Bonferroni bar of about 2.5 it does not
+survive; the modern penalty does.
+
+So: suggestive that illiquidity once paid, confident that it now costs.
+
+**What this settles, and what it retires.** The regime hypothesis was right that the sample
+mattered and wrong about what depth would show. Deeper history did not rescue the thesis — it
+revealed a premium that existed, decayed through the 1990s, and inverted. Trading it today means
+betting that 1990-1994 conditions return, which is not a mechanism.
+
+It also retires the broader worry that the five dead trials were an artefact of one hostile
+decade. Extending to 1990 changed one result's INTERPRETATION and no result's VERDICT. The
+sample-depth problem was real and is now measured rather than suspected.
+
+**Still unmeasured:** 1985-1989, 2000-2004 and 2010-2014 were queried but not downloaded. Three
+more windows would firm up the decay path, and 1985-1989 carries the 1987 crash. Nothing above
+depends on them.
+

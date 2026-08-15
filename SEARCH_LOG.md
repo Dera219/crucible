@@ -93,13 +93,59 @@ closed to a small account.
 value-destroying segment is hygiene, not alpha, but the number is now evidence-backed rather
 than folklore.
 
+### Look 4 — odd-lot tender provisions
+
+**Edge source:** structural constraint, with capacity as the moat.
+**Mechanism:** when a company tenders for its own shares it frequently accepts holders of fewer
+than 100 shares IN FULL, exempt from proration. The provision exists because small holders are
+administratively expensive and buying them out cleanly is worth a concession — so the rule is
+written to benefit exactly the size of holder a fund cannot be. Counterparty and motive are both
+stated in the filing rather than inferred.
+**Prediction:** a workable number of offers per year carry the provision, and the tender price
+exceeds market at expiration by more than costs.
+
+**Result, measured against EDGAR rather than folklore:**
+
+| stage | count |
+|---|---|
+| SC TO-I filings, 2025 | ~578 |
+| carrying odd-lot language | ~52 |
+| mapping to an exchange ticker | 25 |
+| listed AND not a fund repurchase programme | **18** |
+
+Leg 1 confirmed, and not weakly: one 2025 filing disclosed a proration factor of **49.3%** —
+a normal holder had half their shares accepted, an odd-lot holder all of them. The rule works
+exactly as written.
+
+Leg 2 was never reached, because the population is not what the folklore says. Of ~52 filings
+with odd-lot language, **21 are non-traded BDCs and interval funds** running periodic repurchase
+programmes — `N/A (CUSIP Number)`, no exchange price to transact against, and "odd lot priority"
+meaning fairness among existing holders rather than an opportunity. Of the listed remainder,
+several are closed-end funds, warrants (`RUMBW`, `SQFTW`) or dual-class B shares (`LEN-B`).
+
+**Verdict: DEAD on capacity, not on mechanism.** ~18 reachable events a year, capped at 99
+shares. Even a generous 10% premium on a $3,000 position is ~$300 an event, ~$5,400 a year gross,
+before per-deal filing reads and election paperwork — and before several of the 18 prove
+unattractive or unreachable.
+
+**Kept from it:** the transferable finding, which is sharper than the result. "Too small for a
+fund" and "big enough for me" is a narrower band than it sounds. A capacity advantage only pays
+where the per-event prize scales with something OTHER than the constraint creating the moat, and
+an odd-lot provision caps the prize by construction — the rule that grants the edge is the rule
+that bounds it. The next candidate wants to be small-capacity but NOT small-per-event.
+
 ---
 
 ## What the pattern says
 
-Three looks, three deaths, each in under a minute — the instrumentation is working. But note the
-shape: every candidate visible in daily US equity bars is visible to everyone holding the same
-bars. Reversal was already owned. Turn-of-month was arbitraged. Low-price pointed the wrong way.
+Four looks, four deaths — the instrumentation is working. Three of them shared a shape: every
+candidate visible in daily US equity bars is visible to everyone holding the same bars. Reversal
+was already owned. Turn-of-month was arbitraged. Low-price pointed the wrong way.
+
+Look 4 broke that pattern and is the more interesting death. It was NOT visible in the bars — it
+required assembling filing data nobody hands you, the mechanism was documented rather than
+inferred, and the moat was genuine. It died on arithmetic instead: the opportunity was real and
+too small. That is a different lesson and a more useful one.
 
 The data will not hand over a mechanism. It can only confirm or kill one brought to it, and it
 kills fastest exactly those an outsider could think of by looking at the same screen. The next
@@ -111,5 +157,5 @@ has to be built rather than downloaded.
 
 ## Running trial count
 
-**3** exploratory trials as of 2026-08-14. Add these to the trial budget of any hypothesis
+**4** exploratory trials as of 2026-08-15. Add these to the trial budget of any hypothesis
 registered against this universe, and pass the honest total to `deflated_sharpe`.

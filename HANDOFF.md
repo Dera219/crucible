@@ -41,8 +41,8 @@ honest total — and both are defeated by searches that happened and were never 
 exploratory look is a trial the moment the data is queried with an outcome in mind, not when it
 succeeds.
 
-**Three trials are on the budget as of 2026-08-14** (short-horizon reversal, turn-of-month, the
-sub-$5 segment — all dead). Add them to any hypothesis registered against this universe before
+**Four trials are on the budget as of 2026-08-15** (short-horizon reversal, turn-of-month, the
+sub-$5 segment, odd-lot tender provisions — all dead). Add them to any hypothesis registered against this universe before
 computing a deflated Sharpe.
 
 ## Open items, in priority order

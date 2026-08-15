@@ -41,8 +41,11 @@ honest total — and both are defeated by searches that happened and were never 
 exploratory look is a trial the moment the data is queried with an outcome in mind, not when it
 succeeds.
 
-**Four trials are on the budget as of 2026-08-15** (short-horizon reversal, turn-of-month, the
-sub-$5 segment, odd-lot tender provisions — all dead). Add them to any hypothesis registered against this universe before
+**Five trials are on the budget as of 2026-08-15** (short-horizon reversal, turn-of-month, the
+sub-$5 segment, odd-lot tender provisions, the illiquidity premium — all dead). SEARCH_LOG.md
+also records a sample-depth finding worth reading before spending another: two independent sorts
+ranked monotonically the same way, which is one regime showing up twice, and 11 years cannot
+separate a dead factor from one caught on the wrong side of it. Add them to any hypothesis registered against this universe before
 computing a deflated Sharpe.
 
 ## Open items, in priority order

@@ -134,6 +134,44 @@ where the per-event prize scales with something OTHER than the constraint creati
 an odd-lot provision caps the prize by construction — the rule that grants the edge is the rule
 that bounds it. The next candidate wants to be small-capacity but NOT small-per-event.
 
+### Look 5 — the illiquidity premium, at a size that can actually collect it
+
+**Edge source:** risk premium, capacity as a moat that does NOT cap the prize — deliberately
+chosen to answer Look 4's failure.
+**Mechanism:** a fund's mandate requires it to be able to exit without moving the price, so it
+pays up for liquidity it will mostly never use. That payment is the return. The constraint limits
+how much can be deployed, not how much each dollar earns.
+**Prediction:** illiquid names out-earn liquid ones gross, and the question worth answering is
+whether the spread survives spread-and-impact at a small book's size — which the literature does
+not address and this repository's cost model exists to.
+
+**Result:** monotone, and the wrong way.
+
+| quintile | annualised | median $vol/day |
+|---|---|---|
+| 0 most liquid | **+12.2%** | $182M |
+| 1 | +10.8% | $37.6M |
+| 2 | +10.7% | $12.2M |
+| 3 | +8.3% | $3.7M |
+| 4 most illiquid | **+4.1%** | $602k |
+
+Illiquid minus liquid: **-7.3%/yr GROSS**, before a cent of trading cost. Already guarded with
+the $5 raw price floor (so it is not rediscovering penny stocks) and with delisting returns
+included (so the dead names are not dropped).
+
+**Verdict: DEAD, and it died a third way.** Looks 1-3 died because the effect was already owned.
+Look 4 died on capacity arithmetic. This one died because the premium is not in the sample at
+all — investors were paid LESS, monotonically, at every step down the liquidity ladder.
+
+**Kept from it — and this outranks the result: the sample has a regime problem.** Price quintiles
+(Look 3) and liquidity quintiles (Look 5) both rank monotonically in the same direction: big,
+liquid and expensive won, small, illiquid and cheap lost, across the whole decade. 2015-2025
+contains one of the most extreme large-cap concentrations in market history, so ANY factor
+correlated with size or quality inherits it. Over this window the data cannot distinguish "this
+factor does not work" from "this factor was on the wrong side of one regime" — which means five
+trials have been spent on an instrument not yet sensitive enough to answer them. See the note
+below on sample depth.
+
 ---
 
 ## What the pattern says
@@ -157,5 +195,28 @@ has to be built rather than downloaded.
 
 ## Running trial count
 
-**4** exploratory trials as of 2026-08-15. Add these to the trial budget of any hypothesis
+**5** exploratory trials as of 2026-08-15. Add these to the trial budget of any hypothesis
 registered against this universe, and pass the honest total to `deflated_sharpe`.
+
+
+## The sample depth problem — read this before spending trial 6
+
+Two independent sorts today (raw price, Amihud illiquidity) ranked monotonically in the same
+direction. That is not two findings; it is one regime showing up twice. 2015-2025 US equities
+were dominated by a handful of very large, very liquid names, and any cross-sectional factor
+tilting small, cheap or illiquid was short that concentration for the entire sample.
+
+The consequence is methodological rather than economic: **this window cannot separate a dead
+factor from a factor caught on the wrong side of one regime.** Five trials have been charged to
+the deflation budget for questions the data was never able to answer.
+
+`WRDS.md` already says this in its own words — "start as early as the subscription allows...
+depth is not a luxury here, it is the difference between being able to conclude anything and
+not" — and `significance` quantifies it: against a 50-trial search, an edge near Sharpe 1.27
+needs roughly 20 years to separate from luck. The extract in hand is 11.
+
+CRSP daily data begins in 1925 and the subscription almost certainly reaches back decades before
+2015. The cheapest possible improvement to every future trial is one more WRDS query with an
+earlier start date, covering the dot-com peak and bust, the financial crisis, the ZIRP decade and
+the 2022 inflation shock. Until then, a negative result here means "not in this regime" and
+should be recorded as such rather than as "does not work".

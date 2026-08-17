@@ -320,3 +320,62 @@ class TestRegistration:
 
         with pytest.raises(PreregistrationError, match="events.evaluate"):
             assess(self.hypothesis(), Evidence(trials_used=1))
+
+
+class TestStatisticalPower:
+    """ "Could not be seen" and "was not there" are different findings.
+
+    Only one of them retires an idea. A study whose sample could never have reached the required
+    t-statistic, whatever the true effect, has measured its own size — grading that as a kill
+    discards a claim that was never tested, which is why `preregistration` keeps INVALID separate
+    from KILLED.
+    """
+
+    def test_detectable_effect_shrinks_with_the_square_root_of_events(self):
+        from crucible.events import minimum_detectable_car
+
+        # Four times the events, half the detectable effect.
+        assert minimum_detectable_car(100, 0.20) == pytest.approx(0.04)
+        assert minimum_detectable_car(400, 0.20) == pytest.approx(0.02)
+
+    def test_a_single_event_can_detect_nothing(self):
+        from crucible.events import minimum_detectable_car
+
+        assert minimum_detectable_car(1, 0.20) == float("inf")
+
+    def test_an_underpowered_study_is_uninformative_rather_than_killed(self):
+        returns = flat_returns(seed=3)
+        # 40 events against noisy returns: the resolvable effect is far above a 1% bar.
+        events = [Event(returns.assets[n % N_ASSETS], returns.index[30 + n * 5]) for n in range(40)]
+
+        verdict = evaluate(
+            event_study(returns, events, pre=2, post=10),
+            EventKillCriteria(min_events=30, min_mean_car=0.01),
+        )
+
+        assert not verdict.survived
+        assert verdict.underpowered
+        assert verdict.detectable_car > 0.01
+        assert any("underpowered" in reason for reason in verdict.reasons)
+        assert "UNINFORMATIVE" in str(verdict)
+
+    def test_a_well_powered_failure_is_still_a_kill(self):
+        returns = zero_returns()
+        values = returns.values.copy()
+        events = []
+        for n in range(40):
+            row = 30 + n * 5
+            column = n % N_ASSETS
+            # A precise, tiny, consistent effect: resolvable, and below the bar.
+            values[row + 1, column] += 0.001
+            events.append(Event(returns.assets[column], returns.index[row]))
+
+        verdict = evaluate(
+            event_study(returns.with_values(values), events, pre=2, post=10),
+            EventKillCriteria(min_events=30, min_mean_car=0.01),
+        )
+
+        # The sample could see the effect perfectly well; the effect is simply too small.
+        assert not verdict.survived
+        assert not verdict.underpowered
+        assert "KILLED" in str(verdict)

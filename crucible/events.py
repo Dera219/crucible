@@ -284,6 +284,27 @@ def event_study(
     )
 
 
+def minimum_detectable_car(
+    n_events: int, car_volatility: float, *, t_statistic: float = 2.0
+) -> float:
+    """The smallest mean CAR that could reach `t_statistic` at this sample size.
+
+    `t = mean / (sd / sqrt(n))`, so the mean required to hit a given t is `t * sd / sqrt(n)`.
+    Worth computing **before** a study rather than after, for the same reason the capacity
+    arithmetic is worth doing before a trial: it is answerable on paper and it decides whether
+    the question can be answered at all.
+
+    The number is usually sobering. Forty events with a 20% per-event standard deviation cannot
+    detect anything smaller than a 6.3% abnormal move, however real a 2% effect might be — and a
+    study that reports "no effect" there has measured its own sample size.
+    """
+    if n_events < 2:
+        return float("inf")
+    if car_volatility <= 0:
+        return 0.0
+    return t_statistic * car_volatility / math.sqrt(n_events)
+
+
 @dataclass(frozen=True, slots=True)
 class EventKillCriteria:
     """The numbers at which an event claim is abandoned, fixed before the run.
@@ -351,7 +372,14 @@ class EventKillCriteria:
 
 @dataclass(frozen=True, slots=True)
 class EventVerdict:
-    """Whether the claim survived, and every reason it did not."""
+    """Whether the claim survived, and every reason it did not.
+
+    `underpowered` is the distinction that matters most here, and it is deliberately separate
+    from `survived`. A study whose sample could never have reached the required t-statistic —
+    whatever the true effect — has not rejected the claim; it has measured its own size. Grading
+    that as a kill retires an idea that was never actually tested, which is the same reasoning
+    that keeps `Verdict.INVALID` distinct from `Verdict.KILLED` in `preregistration`.
+    """
 
     survived: bool
     reasons: tuple[str, ...]
@@ -360,9 +388,19 @@ class EventVerdict:
     win_rate: float
     n_events: int
     clustering: float
+    #: True when `min_mean_car` sits below what this sample could resolve at `min_t_statistic`.
+    underpowered: bool = False
+    #: The smallest mean CAR this sample could have detected. Compare against `min_mean_car`.
+    detectable_car: float = float("nan")
 
     def __str__(self) -> str:
-        headline = "SURVIVED" if self.survived else "KILLED"
+        if self.survived:
+            headline = "SURVIVED"
+        elif self.underpowered:
+            # Not "KILLED": this sample could not have found the required effect at any size.
+            headline = "UNINFORMATIVE"
+        else:
+            headline = "KILLED"
         body = "\n".join(f"  - {reason}" for reason in self.reasons)
         summary = (
             f"{headline}: {self.n_events} events, "
@@ -413,6 +451,26 @@ def evaluate(
     supplied = study.n_events + study.dropped
     dropped_fraction = study.dropped / supplied if supplied else 0.0
 
+    # What this sample could have resolved, from its own observed dispersion. Computed before
+    # the bars are applied, because "the effect was not there" and "this study could not have
+    # seen it" are different findings and only one of them retires an idea.
+    car_volatility = float(finite.std(ddof=1)) if finite.size >= 2 else float("nan")
+    detectable = minimum_detectable_car(
+        study.n_events, car_volatility, t_statistic=criteria.min_t_statistic
+    )
+    underpowered = (
+        criteria.min_mean_car > 0
+        and math.isfinite(detectable)
+        and detectable > criteria.min_mean_car
+    )
+    if underpowered:
+        reasons.append(
+            f"underpowered: {study.n_events} events at {car_volatility:.1%} per-event volatility "
+            f"can only resolve {detectable:.2%}, but min_mean_car is {criteria.min_mean_car:.2%}. "
+            f"These criteria could not both be met at any true effect size, so a failure here "
+            f"says nothing about the claim"
+        )
+
     if study.n_events < criteria.min_events:
         reasons.append(
             f"{study.n_events} events is below the minimum {criteria.min_events}; "
@@ -447,4 +505,6 @@ def evaluate(
         win_rate=win_rate,
         n_events=study.n_events,
         clustering=study.clustering,
+        underpowered=underpowered,
+        detectable_car=detectable,
     )

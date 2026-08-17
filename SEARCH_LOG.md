@@ -315,3 +315,45 @@ shows the shape, and is killed by exactly that criterion with every other number
 data is queried with an outcome in mind. Querying EDGAR for event dates almost certainly does
 count — Look 4 did.
 
+### Third note: the spin-off candidate is very likely untestable on 11 years
+
+Still not a trial — no data queried. Chidera chose spin-off orphan selling over post-reorg
+equity, and then chose the tightest available version of it: index funds only as the forced
+seller; **index non-addition** as the condition, which is binary and therefore costs **zero
+parameters**; the first regular-way trade as the event; a 1-10 day window, chosen so the test is
+of the forced flow rather than of the 3-6 month spin-off premium published in 1993.
+
+Good choices. The problem is arithmetic, and it is the same kind that killed Look 4.
+
+`minimum_detectable_car` (added to `crucible/events.py` for this) says a sample of N events with
+per-event CAR volatility σ cannot resolve anything below `2σ/√N`. A newly listed small-cap over
+ten days is plausibly 20-25% volatile. So:
+
+| events | detectable at σ=20% |
+|---|---|
+| 50 | 5.7% |
+| 150 | 3.3% |
+| 400 | 2.0% |
+
+Now count the events. ~40 US spin-offs a year; from S&P 500 parents perhaps 10-15; over the
+2015-2025 extract that is ~110-165 before conditioning, and **40-55 after**. Requiring a 5.7%
+abnormal move over ten days is not a plausible bar, so on this extract the design would return
+"no effect" as a statement about its own sample size.
+
+Across the ~35 years already downloaded (1990-94, 1995-99, 2005-09, 2015-25) it is ~150 events
+and ~3.3% — demanding but no longer absurd. **The deeper history is not an improvement to this
+hypothesis, it is a precondition for it.** The two slices that expired unretrieved, 2000-2004 and
+2010-2014, are exactly the gaps in the middle of that span.
+
+Two prerequisites before registering, both cheap and neither a trial:
+
+1. **The distributions table is not in the current extract.** Its 19 columns carry no
+   distribution codes, so a spin-off cannot be distinguished from any other newly listed PERMNO.
+   WRDS.md now documents the query.
+2. **Index constituent history may not be available.** S&P 500 membership commonly is; Russell
+   is licensed separately and often is not. If only S&P is reachable, the universe narrows as
+   above. If neither is, the conditioning variable has to change and the mechanism should be
+   rewritten rather than patched.
+
+**Trial count still 5.**
+

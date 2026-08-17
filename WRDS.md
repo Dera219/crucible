@@ -96,6 +96,33 @@ anything and not.
 A whole-market daily extract over 20+ years is large. If the web interface times out, pull it in
 five-year slices and concatenate — `load_crsp_csv` does not care how the file was assembled.
 
+## Two more tables, if you are testing an event claim
+
+The daily file alone cannot say *why* a security appeared or what happened to it. Neither of the
+tables below is needed for a cross-sectional factor, and both are needed for anything about
+corporate actions — see `crucible/events.py` and the spin-off candidate in SEARCH_LOG.md.
+
+**Distributions** (CRSP → Stock/Security Files → the distributions table, joined on PERMNO).
+Carries the distribution codes that identify a spin-off, together with its dates. Without it a
+spin-off is indistinguishable from any other newly listed PERMNO, and the event set has to be
+scraped from EDGAR instead — slower, and it spends a trial, since Look 4 established that
+querying filings with an outcome in mind counts as one.
+
+Note what this buys beyond the event list: a spinco's **first observation in the daily file is
+its first regular-way trade**, so once the distributions table tells you which new PERMNOs are
+spin-offs, the event date needs no filing at all.
+
+**Index constituent history** (CRSP → Annual Update → Index/S&P 500 Descriptions, `msp500list`
+on most subscriptions). Needed to answer "was the spun-off company added to the parent's index",
+which is the whole conditioning variable of the orphan-selling claim: the forced sale exists
+precisely when a fund holds something its benchmark does not.
+
+**Check this one before designing around it.** S&P 500 membership is commonly included; Russell
+membership is licensed separately and often is not. If only S&P is available, the universe
+narrows to spin-offs from S&P 500 parents, which cuts the event count by roughly two thirds — and
+`crucible.events.minimum_detectable_car` will tell you in one line whether what remains can
+resolve the effect you require. Run that before pulling anything.
+
 ## Then
 
 ```python

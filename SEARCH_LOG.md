@@ -266,3 +266,52 @@ sample-depth problem was real and is now measured rather than suspected.
 more windows would firm up the decay path, and 1985-1989 carries the 1987 crash. Nothing above
 depends on them.
 
+---
+
+## 2026-08-17 — two methodological notes. NOT trials: no data was queried.
+
+Recorded here because both change how the next trial should be chosen, and because the count at
+the bottom must stay honest in both directions — inflating it costs real statistical power.
+
+### The ceiling test
+
+Look 4 is usually remembered as "the opportunity was too small". That is the wrong lesson. It
+died because **$5.4k was a ceiling**: 99 shares per event is a regulatory cap, and no amount of
+capital, skill or patience lifts it. Every other candidate considered since is limited by how
+much capital is behind it, not by a rule.
+
+So the question to ask before spending a trial is not "how much would this pay today" but
+**is the ceiling set by the mechanism, or by me?** It is answerable on paper.
+
+Order-of-magnitude arithmetic on the current candidates, crowd-adjusted, at retail scale:
+post-reorg equity ~16k/yr, spin-off orphan selling ~15k/yr, odd-lot ~3.2k/yr (the model
+reproduces the known death, which is the only reason to trust the others), index reconstitution
+~3k/yr despite ~$6M/yr of deployable flow — crowding eats it. Weakest inputs are the capturable
+share and the per-event edge; change either by 3x and the top two swap.
+
+### The instrument was missing, and that was the actual blocker
+
+Every kill criterion in `preregistration.KillCriteria` describes a **cross-sectional** signal:
+information coefficient across thousands of names, quantile monotonicity, annual turnover. None
+of them is computable for a claim about forty discrete events. An IC across a cross-section where
+3,698 of 3,700 weights are zero is degenerate rather than small; monotonicity across two
+positions means nothing.
+
+Note what that implies about the five dead trials. Looks 1, 2, 3 and 5 were all cross-sectional
+and all died of being already owned. **Look 4 was the only event-driven one — and the only one
+recorded above as breaking that pattern.** The conclusion in "What the pattern says" is that the
+next candidate must come from a dataset built rather than downloaded, and every such candidate is
+event-shaped. The platform could not have graded any of them.
+
+`crucible/events.py` now supplies the missing instrument: abnormal returns aligned in event time,
+CAR per event, and a t-statistic **across events**. `EventKillCriteria` is a separate type rather
+than a relaxed `KillCriteria`, because loosening cross-sectional bars until an event claim passes
+removes the discipline without replacing it. It adds the guard the headline cannot supply —
+**clustering**, since events bunch and a t-statistic assumes independence, so forty events sharing
+a reconstitution date are nearer one observation than forty. `scripts/example_event_hypothesis.py`
+shows the shape, and is killed by exactly that criterion with every other number passing.
+
+**Trial count unchanged at 5.** Reasoning about candidates is free; the budget is spent when the
+data is queried with an outcome in mind. Querying EDGAR for event dates almost certainly does
+count — Look 4 did.
+

@@ -273,3 +273,50 @@ class TestWindowValidation:
 
         assert not verdict.survived
         assert verdict.n_events == 0
+
+
+class TestRegistration:
+    """An event claim has to be registrable, or the instrument is unreachable.
+
+    `Hypothesis` hashes its criteria so that moving a bar after seeing a result changes the
+    fingerprint. Criteria that cannot serialise cannot be committed to, and criteria the type
+    system rejects cannot be registered at all — either way the discipline is bypassed by simply
+    not using it.
+    """
+
+    def hypothesis(self, **overrides):
+        from crucible.preregistration import EdgeSource, Hypothesis
+
+        defaults = dict(
+            name="spin-off orphan selling",
+            claim="Index funds sell spun-off shares they cannot hold, at any price.",
+            edge_source=EdgeSource.STRUCTURAL_CONSTRAINT,
+            mechanism="x" * 200,
+            universe="US common stock, CRSP CIZ",
+            horizon_bars=20,
+            warmup_bars=0,
+            parameters=(),
+            kill=EventKillCriteria(),
+            trial_budget=6,
+        )
+        return Hypothesis(**{**defaults, **overrides})
+
+    def test_event_criteria_can_stand_where_cross_sectional_ones_do(self):
+        assert isinstance(self.hypothesis().kill, EventKillCriteria)
+
+    def test_the_criteria_are_serialised_into_the_fingerprint(self):
+        loose = self.hypothesis(kill=EventKillCriteria(min_t_statistic=2.0))
+        relaxed = self.hypothesis(kill=EventKillCriteria(min_t_statistic=0.5))
+
+        # Lowering a bar after seeing a result must be visible as a different claim.
+        assert loose.fingerprint != relaxed.fingerprint
+
+    def test_the_parameter_cap_is_still_enforced(self):
+        with pytest.raises(ValueError):
+            self.hypothesis(parameters=("a", "b", "c", "d"), kill=EventKillCriteria())
+
+    def test_assess_refuses_an_event_claim_instead_of_scoring_absent_fields(self):
+        from crucible.preregistration import Evidence, PreregistrationError, assess
+
+        with pytest.raises(PreregistrationError, match="events.evaluate"):
+            assess(self.hypothesis(), Evidence(trials_used=1))

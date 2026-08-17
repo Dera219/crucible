@@ -46,6 +46,7 @@ import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
@@ -328,6 +329,24 @@ class EventKillCriteria:
             )
         if self.min_t_statistic < 0:
             raise ValueError(f"min_t_statistic must be non-negative, got {self.min_t_statistic}")
+
+    def to_json(self) -> dict[str, Any]:
+        """Serialised for the preregistration hash.
+
+        Required by `Hypothesis`, which hashes its criteria so that moving a bar after seeing a
+        result changes the hash and is therefore visible. Criteria that cannot be serialised
+        cannot be committed to, which would defeat the point of registering them.
+        """
+        return {
+            "min_events": self.min_events,
+            "min_mean_car": self.min_mean_car,
+            "min_t_statistic": self.min_t_statistic,
+            "min_win_rate": self.min_win_rate,
+            "max_clustering": self.max_clustering,
+            "max_dropped_fraction": self.max_dropped_fraction,
+            "require_deflation_survival": self.require_deflation_survival,
+            "max_parameters": self.max_parameters,
+        }
 
 
 @dataclass(frozen=True, slots=True)

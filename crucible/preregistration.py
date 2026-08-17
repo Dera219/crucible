@@ -45,7 +45,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 __all__ = [
     "EdgeSource",
@@ -97,6 +97,26 @@ class Verdict(StrEnum):
 class Violation:
     criterion: str
     detail: str
+
+
+class KillBar(Protocol):
+    """What a `Hypothesis` actually needs from its criteria: a parameter cap, and serialisability.
+
+    A protocol rather than a base class so that criteria for a claim of a different *shape* can
+    stand here without inheriting fields that do not apply to it. `KillCriteria` describes a
+    cross-sectional signal — information coefficient, quantile monotonicity, annual turnover —
+    and none of those is computable for a claim about forty discrete events. `events.
+    EventKillCriteria` satisfies this protocol and is judged by `events.evaluate` instead.
+
+    `to_json` is required because the hypothesis hashes its criteria: moving a bar after seeing
+    a result must change the hash and therefore be visible. Criteria that cannot be serialised
+    cannot be committed to.
+    """
+
+    @property
+    def max_parameters(self) -> int: ...
+
+    def to_json(self) -> dict[str, Any]: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,7 +188,7 @@ class Hypothesis:
     horizon_bars: int
     warmup_bars: int
     parameters: tuple[str, ...]
-    kill: KillCriteria
+    kill: KillBar
     #: How many backtests you are permitting yourself before deflation eats the result. Choose it
     #: knowing the arithmetic: more trials raise the bar the winner must clear, so a large budget
     #: is not generosity, it is a debt.
@@ -249,6 +269,16 @@ def assess(hypothesis: Hypothesis, evidence: Evidence) -> tuple[Verdict, tuple[V
     underperformance, and recording it as a rejection means it will never be revisited even
     though it was never actually tried.
     """
+    if not isinstance(hypothesis.kill, KillCriteria):
+        # Checked before anything else. An event claim carries criteria this function cannot
+        # read — there is no information coefficient or quantile monotonicity for forty discrete
+        # events. Reporting a structural verdict first would send the caller debugging their
+        # evidence when the real problem is that they reached for the wrong instrument.
+        raise PreregistrationError(
+            f"{type(hypothesis.kill).__name__} cannot be judged by assess(), which grades "
+            f"cross-sectional signals. Use crucible.events.evaluate() for an event claim."
+        )
+
     structural: list[Violation] = []
 
     if hypothesis.warmup_bars >= evidence.test_window_bars > 0:

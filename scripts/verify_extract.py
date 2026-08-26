@@ -39,6 +39,7 @@ from overlapping pulls, and every cross-sectional statistic on those rows is dou
 
 from __future__ import annotations
 
+import gzip
 import sys
 from pathlib import Path
 
@@ -48,6 +49,23 @@ from crucible.data import DataError, Dataset, load_crsp_ciz, load_crsp_csv
 from crucible.universe import Universe, liquidity_screen, listing_mask, price_floor_screen
 
 
+def _header_line(path: Path) -> str:
+    """Read the first line of a CSV that may be gzipped, without reading the rest of it.
+
+    Sniffed from the gzip magic bytes rather than the suffix, for the same reason the format
+    itself is not guessed from the filename. This is not hypothetical tidiness: WRDS serves
+    compressed output by default and `WRDS.md` recommends gzip for exactly the large pulls
+    that most need verifying. Reading a gzip member as text yields replacement characters,
+    no column name matches, and the caller silently falls through to the legacy loader —
+    which then refuses with a message blaming the extract for missing columns it does have.
+    """
+    with path.open("rb") as handle:
+        compressed = handle.read(2) == b"\x1f\x8b"
+    opener = gzip.open if compressed else open
+    with opener(path, "rt", encoding="utf-8", errors="replace") as handle:
+        return (handle.readline() or "").lower()
+
+
 def _load(daily: Path, delisting: Path | None) -> tuple[Dataset, str]:
     """Load either CRSP format, choosing by the columns actually present.
 
@@ -55,7 +73,7 @@ def _load(daily: Path, delisting: Path | None) -> tuple[Dataset, str]:
     2024 and any new extract will be CIZ. Guessing from the filename would be wrong the first
     time somebody renames a file.
     """
-    header = daily.read_text(encoding="utf-8", errors="replace").split("\n", 1)[0].lower()
+    header = _header_line(daily)
     if "dlycaldt" in header:
         return load_crsp_ciz(daily, delisting_path=delisting), "CIZ (Flat File Format 2.0)"
     return load_crsp_csv(daily), "legacy SIZ (retired after 2024-12)"

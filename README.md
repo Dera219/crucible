@@ -4,7 +4,7 @@ A cross-sectional equity research platform — panel data, a signal algebra, a v
 backtester with square-root market impact, and validation machinery that tries to kill your
 results before you believe them.
 
-**403 tests. ruff + mypy strict clean. And thirteen bugs it caught in its own code, every one
+**408 tests. ruff + mypy strict clean. And thirteen bugs it caught in its own code, every one
 with a green test suite already passing.**
 
 That last number is what this README is about.

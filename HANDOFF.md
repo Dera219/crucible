@@ -10,7 +10,7 @@ hypothesis has been registered** — deliberately, because a backtest run before
 fixed is a trial that raises the deflation bar for whatever is eventually claimed.
 
 ```
-372 tests · ruff + mypy strict clean (package AND scripts) · public at github.com/Dera219/crucible
+408 tests · ruff + mypy strict clean (package AND scripts) · public at github.com/Dera219/crucible
 ```
 
 ## The data

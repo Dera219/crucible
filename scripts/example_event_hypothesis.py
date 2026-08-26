@@ -52,6 +52,21 @@ from crucible.preregistration import EdgeSource, Hypothesis
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
+#: Named rather than built inline inside `Hypothesis`, because `Hypothesis.kill` is declared as
+#: the `KillBar` protocol — wide enough to accept either criteria type — and `evaluate` below
+#: needs the concrete `EventKillCriteria`. Passing `HYPOTHESIS.kill` there does not typecheck,
+#: and the honest fix is to keep the precise type rather than to cast the protocol back down.
+KILL = EventKillCriteria(
+    min_events=30,
+    min_mean_car=0.005,
+    min_t_statistic=2.0,
+    min_win_rate=0.5,
+    # Reconstitution is one day a year. This bar is the one this hypothesis should fail on,
+    # and it is set here on purpose to show what an honest criterion looks like when it
+    # rules out the very claim being registered.
+    max_clustering=0.5,
+)
+
 HYPOTHESIS = Hypothesis(
     name="index-reconstitution-forced-selling",
     claim=(
@@ -74,16 +89,7 @@ HYPOTHESIS = Hypothesis(
     horizon_bars=10,
     warmup_bars=0,
     parameters=(),
-    kill=EventKillCriteria(
-        min_events=30,
-        min_mean_car=0.005,
-        min_t_statistic=2.0,
-        min_win_rate=0.5,
-        # Reconstitution is one day a year. This bar is the one this hypothesis should fail on,
-        # and it is set here on purpose to show what an honest criterion looks like when it
-        # rules out the very claim being registered.
-        max_clustering=0.5,
-    ),
+    kill=KILL,
     # Five exploratory trials are already spent — see SEARCH_LOG.md. A budget that ignores them
     # deflates against a search that did not happen.
     trial_budget=6,
@@ -106,7 +112,7 @@ def synthetic_events() -> tuple[Panel, list[Event]]:
     recon_day = 120
     values[recon_day + 1 : recon_day + 6, :40] += 0.012  # the post-deletion bounce
 
-    returns = Panel(values, index, assets, "returns")
+    returns = Panel(values, tuple(index), tuple(assets), "returns")
     events = [Event(assets[i], index[recon_day]) for i in range(40)]
     return returns, events
 
@@ -126,7 +132,7 @@ def main() -> None:
     print(f"win rate:                 {study.win_rate:.2f}")
     print(f"clustering:               {study.clustering:.0%}\n")
 
-    verdict = evaluate(study, HYPOTHESIS.kill, traded_window=(1, 5))
+    verdict = evaluate(study, KILL, traded_window=(1, 5))
     print(verdict)
     print()
     print(

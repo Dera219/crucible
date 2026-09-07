@@ -1,5 +1,7 @@
 # crucible
 
+[![CI](https://github.com/Dera219/crucible/actions/workflows/ci.yml/badge.svg)](https://github.com/Dera219/crucible/actions/workflows/ci.yml)
+
 A cross-sectional equity research platform — panel data, a signal algebra, a vectorised
 backtester with square-root market impact, and validation machinery that tries to kill your
 results before you believe them.

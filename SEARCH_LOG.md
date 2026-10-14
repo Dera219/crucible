@@ -195,8 +195,9 @@ has to be built rather than downloaded.
 
 ## Running trial count
 
-**5** exploratory trials as of 2026-08-15. Add these to the trial budget of any hypothesis
-registered against this universe, and pass the honest total to `deflated_sharpe`.
+**6** trials as of 2026-10-14: the five exploratory looks above, plus trial 6, which was
+registered, sealed and killed (see the end of this file). Add these to the trial budget of any
+hypothesis registered against this universe, and pass the honest total to `deflated_sharpe`.
 
 
 ## The sample depth problem — read this before spending trial 6
@@ -376,3 +377,65 @@ claim is killed, it will be revealed here in full, because a dead idea has nothi
 protect. If it survives, it may stay sealed while it is traded; the hash above still dates it.
 
 Not yet run when this was written. **Trial count: 5, becoming 6 the moment it runs.**
+
+---
+
+## 2026-10-14 — Trial 6 RUN and KILLED. Revealed in full, as committed.
+
+Scored once at 16:16:50 UTC, twelve minutes after the sealing commit above. The registration is
+now public at `registrations/trial-6-spinoff-orphans/`. Verify it against the hash published
+before the run:
+
+```
+shasum -a 256 registrations/trial-6-spinoff-orphans/registration.json
+# f1cd884f75997fcc1186c7351569a42525efb2e054756adb76d7301b4c713543
+```
+
+The three scripts in that folder match the SHA-256s recorded inside `registration.json`. The event
+list itself is derived from licensed CRSP data and is not published; its hash is in the
+registration.
+
+**The claim.** Spin-offs of S&P 500 companies that the index does not keep are sold by index
+funds at their first close, and earn a positive abnormal return from the next session's close
+through two sessions after. The mechanism is in Chidera's words: *the traders who buy the shares
+the index funds are forced to dump at the spin-off's first close are middlemen who can't afford
+to hold a small, risky new stock, so they sell it to me below fair value for about 2 days until
+they've unloaded.*
+
+**The events.** 105 new listings from 1990 to 2025, the common-stock spin-offs of S&P 500 members
+that were not in the index on the session after their first trade. 79 are before 2015-10-01, when
+funds sold at their own discretion. 26 are after, when S&P DJI's rule adds a spinco at a zero
+price and removes it after one regular-way day, so the sale is a single closing trade (14 of the
+26 were one-day members; 12 were never added). Two things were found while building the set, and
+both were fixed before sealing. The August count of 115 orphans had classified the one-day
+members as "added", which is exactly backwards for this claim. It had also included pre-existing
+securities and twelve REITs, ADRs and foreign issuers that no crucible panel contains.
+
+**The result.**
+
+| criterion | bar | result |
+|---|---|---|
+| mean abnormal return, offsets 2-3 | >= +2.50% | **-1.35%** |
+| \|t\| across events | >= 2.64 (Bonferroni over 6 trials) | **2.28**, negative |
+| win rate | >= 50% | **47%** |
+| events placed / dropped | >= 30 / <= 20% | 105 / 0 |
+| clustering | <= 50% | 13% |
+
+Not underpowered: the sample could resolve 1.56%, below the bar. **Killed**,
+and in the opposite direction: buying at the day-1 close lost 1.35% against the equal-weighted
+market over the next two sessions. That is not a significant short either, since |t| 2.28 is below
+the same corrected bar.
+
+**What this says, and what it does not.** The registered window held through the period the
+mechanism says the middlemen are still unloading, and the price fell there. The window was set by
+translating "the unloading lasts about two days" into "hold for those two days", when the
+mechanism more naturally predicts a price pushed DOWN during the unloading and a recovery after
+it. So the result is consistent with selling pressure that persists past the first close, and
+inconsistent with the registered claim that it reverses inside the window. Whether it reverses
+afterwards is a different claim, motivated by having seen this one, and would be trial 7. It is
+**not being run**. At about three events a year in small names, a real edge there pays a few
+hundred dollars a year at this account's size, and trying a new window immediately after a kill
+is how a search starts presenting itself as research.
+
+**Lesson for the next registration:** derive the traded window from the mechanism's predicted
+price PATH (down, then up), not from its duration.

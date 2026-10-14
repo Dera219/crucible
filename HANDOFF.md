@@ -5,9 +5,11 @@ is verified against the actual extract, not against fixtures.
 
 ## Where things stand
 
-crucible is complete as a platform and has real data in it. **No strategy has been tested and no
-hypothesis has been registered** — deliberately, because a backtest run before the criteria are
-fixed is a trial that raises the deflation bar for whatever is eventually claimed.
+crucible is complete as a platform and has real data in it. **One hypothesis has been registered and
+run** — spin-off orphan forced selling, trial 6, sealed by commit-reveal and then killed on
+2026-10-14 (SEARCH_LOG.md, `registrations/trial-6-spinoff-orphans/`). Nothing else has been
+backtested, deliberately, because a backtest run before the criteria are fixed is a trial that
+raises the deflation bar for whatever is eventually claimed. The lifetime trial count is 6.
 
 ```
 408 tests · ruff + mypy strict clean (package AND scripts) · public at github.com/Dera219/crucible

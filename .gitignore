@@ -33,3 +33,6 @@ state/
 *.sqlite3
 data/
 journal.jsonl
+# ...except a sealed registration's journal: once revealed, it IS the public record of the
+# registration, the single trial and the verdict.
+!registrations/**/journal.jsonl

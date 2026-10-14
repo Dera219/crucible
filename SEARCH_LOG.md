@@ -357,3 +357,22 @@ Two prerequisites before registering, both cheap and neither a trial:
 
 **Trial count still 5.**
 
+
+---
+
+## 2026-10-14 — Trial 6 registered and SEALED before it was run
+
+The spin-off orphan claim above is now registered, with every field that defines it fixed: event
+rule, window, mechanism, kill criteria, and the code that runs it. It is **sealed** rather than
+published, by commit-reveal: the full registration lives in a private repository, and only its
+hash is published here, so this entry proves the claim existed in exactly that form before any
+result did, without saying what it is.
+
+- **SHA-256 of `registration.json`:** `f1cd884f75997fcc1186c7351569a42525efb2e054756adb76d7301b4c713543`
+- **`Hypothesis.fingerprint`:** `758a2901b006df48`
+
+Revealing it means publishing `registration.json`. Anyone can then hash it and compare. If the
+claim is killed, it will be revealed here in full, because a dead idea has nothing left to
+protect. If it survives, it may stay sealed while it is traded; the hash above still dates it.
+
+Not yet run when this was written. **Trial count: 5, becoming 6 the moment it runs.**

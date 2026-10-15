@@ -6,7 +6,7 @@ A cross-sectional equity research platform — panel data, a signal algebra, a v
 backtester with square-root market impact, and validation machinery that tries to kill your
 results before you believe them.
 
-**408 tests. ruff + mypy strict clean. And thirteen bugs it caught in its own code, every one
+**410 tests. ruff + mypy strict clean. And fourteen bugs it caught in its own code, every one
 with a green test suite already passing.**
 
 That last number is what this README is about.
@@ -49,8 +49,12 @@ Every technique below came out of trying to answer that.
 | 11 | Spread guard written, documented, and never wired in | one-sided books traded through | Dead-code sweep |
 | 12 | Partial fills recorded no position at all | 50 real shares, 0 recorded | Asking "what if it half-fills?" |
 | 13 | Reconciliation halted on routine partial fills | system stops on normal operation | Following #12 downstream |
+| 14 | An event missing a day inside its traded window was scored as a zero return (NaN-ignoring sum), and counted as measured | every event study diluted toward zero by its incomplete events; a study with no data at all scored a flat 0.00 | Asking what `nansum` does to an all-NaN row |
 
-Numbers 9–13 are in the sibling execution repo; 1–8 are here.
+Numbers 9–13 are in the sibling execution repo; 1–8 and 14 are here. Number 14 was found on
+2026-10-15, after trial 6 (spin-off orphans, 105 events, killed at CAR −1.35%) had been scored
+under the old sum: whether any of its 105 events carried a missing day inside offsets 2–3 is
+not known without re-reading the data, and re-scoring a revealed trial is a decision, not a fix.
 
 ---
 

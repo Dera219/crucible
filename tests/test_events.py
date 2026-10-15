@@ -379,3 +379,56 @@ class TestStatisticalPower:
         assert not verdict.survived
         assert not verdict.underpowered
         assert "KILLED" in str(verdict)
+
+
+class TestMissingDaysInsideTheWindow:
+    """Bug #14: a NaN-ignoring sum scored an event with no data as a zero return and an event
+    missing one day as the other days' total — both measured, both wrong, both toward zero."""
+
+    def test_an_event_missing_a_traded_day_is_not_a_measurement(self):
+        returns = zero_returns()
+        values = returns.values.copy()
+        values[100:106, 0] = 0.01  # a 1%/day event on A000: CAR 6% over offsets 0..5
+        values[100:106, 1] = 0.01  # the same on A001...
+        values[103, 1] = np.nan  # ...with one traded day missing
+        values[100:106, 2] = np.nan  # and A002 has no data at all inside the window
+        panel = Panel(values, returns.index, returns.assets, "returns")
+        events = [Event(returns.assets[i], returns.index[100]) for i in range(3)]
+
+        study = event_study(panel, events, pre=0, post=5, benchmark=panel)
+
+        car = study.car_over(0, 5)
+        assert car[0] == pytest.approx(0.06)
+        assert np.isnan(car[1]) and np.isnan(car[2])  # not 0.05, and not 0.0
+        assert np.isnan(study.car[1]) and np.isnan(study.car[2])
+        assert study.mean_car == pytest.approx(0.06)  # the one measured event, not 0.0367
+        assert study.win_rate == 1.0
+
+        verdict = evaluate(
+            study,
+            EventKillCriteria(
+                min_events=2, min_t_statistic=0.0, min_win_rate=0.0, max_dropped_fraction=0.5
+            ),
+        )
+        # One measured of three supplied: two incomplete events count with the dropped ones.
+        assert verdict.n_events == 1 and verdict.mean_car == pytest.approx(0.06)
+        assert not verdict.survived
+        assert any("measured events is below" in reason for reason in verdict.reasons)
+        assert any("2 missing a day inside the traded window" in r for r in verdict.reasons)
+
+    def test_a_missing_day_outside_the_traded_window_does_not_exclude_the_event(self):
+        returns = zero_returns()
+        values = returns.values.copy()
+        values[100:103, 0] = 0.02
+        values[98, 0] = np.nan  # a pre-event day: looked at, never traded, never claimed
+        panel = Panel(values, returns.index, returns.assets, "returns")
+
+        study = event_study(panel, [Event(returns.assets[0], returns.index[100])], pre=3, post=2,
+                            benchmark=panel)
+
+        assert np.isnan(study.car[0])  # the whole-window CAR is honest about the hole
+        assert study.car_over(0, 2)[0] == pytest.approx(0.06)  # the traded window is complete
+        verdict = evaluate(
+            study, EventKillCriteria(min_events=2, min_t_statistic=0.0, min_win_rate=0.0)
+        )
+        assert verdict.n_events == 1 and verdict.mean_car == pytest.approx(0.06)

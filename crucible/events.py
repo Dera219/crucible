@@ -112,9 +112,16 @@ class EventStudy:
 
         Summed rather than compounded: over a window of days these agree to a rounding error,
         and the sum is what the t-statistic below is defined on.
+
+        NaN for any event with a missing day inside the window, never a sum of the days that
+        happened to be there. An earlier version used a NaN-ignoring sum, which scored an event
+        with no data at all as a zero return and an event missing one day as the other days'
+        total: both dilute the mean toward zero, both count as a measured event, and neither
+        is a measurement. A missing day is missing; the event is excluded and `evaluate` counts
+        it with the dropped ones, because a study that keeps only the complete events has
+        selected on data availability exactly as one that keeps only the placeable ones has.
         """
-        with np.errstate(invalid="ignore"):
-            return np.nansum(self.abnormal, axis=1)
+        return self.abnormal.sum(axis=1)
 
     def car_over(self, start: int, end: int) -> Array:
         """Cumulative abnormal return between two event-time offsets, inclusive.
@@ -128,8 +135,8 @@ class EventStudy:
         mask = (self.offsets >= start) & (self.offsets <= end)
         if not mask.any():
             raise EventError(f"no offsets in [{start}, {end}]; window is {self.window}")
-        with np.errstate(invalid="ignore"):
-            return np.nansum(self.abnormal[:, mask], axis=1)
+        # A plain sum: a NaN anywhere in the window makes the event's CAR NaN. See `car`.
+        return self.abnormal[:, mask].sum(axis=1)
 
     @property
     def window(self) -> tuple[int, int]:
@@ -441,6 +448,10 @@ def evaluate(
 
     car = study.car_over(low, high)
     finite = car[np.isfinite(car)]
+    # Placed, but with a day missing inside the traded window: not measured, and not silently
+    # scored as zero either. Counted beside the events that could not be placed at all, since
+    # both are the same selection on data availability.
+    incomplete = study.n_events - int(finite.size)
     mean_car = float(finite.mean()) if finite.size else float("nan")
     win_rate = float((finite > 0).mean()) if finite.size else float("nan")
     if finite.size >= 2 and finite.std(ddof=1) > 0:
@@ -449,14 +460,15 @@ def evaluate(
         t_statistic = float("nan")
 
     supplied = study.n_events + study.dropped
-    dropped_fraction = study.dropped / supplied if supplied else 0.0
+    dropped_fraction = (study.dropped + incomplete) / supplied if supplied else 0.0
+    measured = int(finite.size)
 
     # What this sample could have resolved, from its own observed dispersion. Computed before
     # the bars are applied, because "the effect was not there" and "this study could not have
     # seen it" are different findings and only one of them retires an idea.
     car_volatility = float(finite.std(ddof=1)) if finite.size >= 2 else float("nan")
     detectable = minimum_detectable_car(
-        study.n_events, car_volatility, t_statistic=criteria.min_t_statistic
+        measured, car_volatility, t_statistic=criteria.min_t_statistic
     )
     underpowered = (
         criteria.min_mean_car > 0
@@ -465,15 +477,15 @@ def evaluate(
     )
     if underpowered:
         reasons.append(
-            f"underpowered: {study.n_events} events at {car_volatility:.1%} per-event volatility "
+            f"underpowered: {measured} events at {car_volatility:.1%} per-event volatility "
             f"can only resolve {detectable:.2%}, but min_mean_car is {criteria.min_mean_car:.2%}. "
             f"These criteria could not both be met at any true effect size, so a failure here "
             f"says nothing about the claim"
         )
 
-    if study.n_events < criteria.min_events:
+    if measured < criteria.min_events:
         reasons.append(
-            f"{study.n_events} events is below the minimum {criteria.min_events}; "
+            f"{measured} measured events is below the minimum {criteria.min_events}; "
             f"a t-statistic on this many is decoration"
         )
     if not math.isfinite(mean_car) or mean_car < criteria.min_mean_car:
@@ -494,7 +506,8 @@ def evaluate(
     if dropped_fraction > criteria.max_dropped_fraction:
         reasons.append(
             f"{dropped_fraction:.0%} of supplied events were dropped for missing data "
-            f"(limit {criteria.max_dropped_fraction:.0%}); the survivors are a selected sample"
+            f"({study.dropped} unplaceable, {incomplete} missing a day inside the traded window; "
+            f"limit {criteria.max_dropped_fraction:.0%}); the survivors are a selected sample"
         )
 
     return EventVerdict(
@@ -503,7 +516,7 @@ def evaluate(
         mean_car=mean_car,
         t_statistic=t_statistic,
         win_rate=win_rate,
-        n_events=study.n_events,
+        n_events=measured,
         clustering=study.clustering,
         underpowered=underpowered,
         detectable_car=detectable,

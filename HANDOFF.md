@@ -12,7 +12,7 @@ backtested, deliberately, because a backtest run before the criteria are fixed i
 raises the deflation bar for whatever is eventually claimed. The lifetime trial count is 6.
 
 ```
-408 tests · ruff + mypy strict clean (package AND scripts) · public at github.com/Dera219/crucible
+410 tests · ruff + mypy strict clean (package AND scripts) · public at github.com/Dera219/crucible
 ```
 
 ## The data

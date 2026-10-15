@@ -570,3 +570,59 @@ post-reorg candidate died on paper, this one died in the data — and the cost o
 one trial. A mechanism's premise ("holders who cannot keep it") should be sized before it is
 registered: what fraction of the float does the constrained holder actually own? That number is
 answerable from 13F data before any return is read, and it was not asked here.
+
+---
+
+## 2026-10-15 — Mutual-fund fire-sale pressure, retired on paper. NOT a trial: no return was read.
+
+The candidate after trial 7 was Coval & Stafford's forced selling: funds hit by heavy redemptions
+must sell what they hold inside the quarter, so the stocks they hold in size are pressed and then
+recover. The lesson written at the end of trial 7 was applied before anything was registered —
+size the premise from holdings, never from returns. The pull is specified in `WRDS_FIRE_SALES.md`
+(ten WRDS queries, listed there); the measure and the line were fixed in that file before the
+data existed, and the script that computed it is `size_premise.py` in the private registrations
+folder, with its aggregate output beside it.
+
+**The measure.** For each quarter 2005Q1–2025Q4 and each US common stock (crucible's CIZ
+classification), expected forced sales = Σ over domestic-equity, non-index, non-ETF funds whose
+compounded flow over the quarter is at or below −5% of shares held at the quarter start × |flow|,
+divided by shares outstanding at the quarter start. Holdings are the fund's latest s12 report in
+the two quarters before, first vintage; flows are CRSP monthly TNA and returns summed over share
+classes through MFLINKS. The pre-stated line: if the median stock in the top pressure decile has
+expected forced sales under 1% of shares outstanding, the premise cannot move a price.
+
+**The numbers** (83 quarters; 2,467 eligible funds a quarter at the median, 507 of them distressed —
+one in five; 10th-percentile quarterly flow −8.2%; eligible funds own 10.4% of the median stock in
+2005 and 7.0% in 2025, so the unit check passes and the share is falling):
+
+| statistic | value |
+|---|---|
+| median over quarters of the top-decile median expected forced sales | **0.63%** of shares outstanding |
+| inter-quartile range of that number across quarters | 0.50% – 0.78% |
+| worst quarter (2020Q1) | 1.59%; then 2007Q3 1.41%, 2015Q3 1.33%, 2008Q3 1.21% |
+| quarters at or above the 1% line | 9 of 83 |
+| stocks with expected forced sales ≥ 2% in a quarter | median 3, mean 9, max 112 (2020Q1), 723 stock-quarters in all |
+| stocks at or above 5% | 25 stock-quarters in twenty-one years |
+| share of the top decile held by distressed funds (unweighted) | 6.7% |
+| median size decile of the top-decile names (1 = smallest) | 7; 27% sit in the small half |
+| top-decile names with average daily dollar volume ≥ $1M | 89% |
+
+**Verdict.** The line was 1% and the number is 0.63%; the premise fails on its own terms. The
+distressed funds together own about seven percent of a top-decile stock and are redeeming eight
+to ten percent of themselves, so the selling they are forced into is six tenths of a percent of
+the company over a quarter — a day's turnover spread across sixty sessions. It is also not where
+the story said it would be: the pressure concentrates in deciles 6–8, in names any fund can
+trade, not in small illiquid ones a distressed fund cannot leave quietly. The strong form (two
+percent or more of a company forced out) exists only in crisis quarters, a few dozen names at a
+time and three in an ordinary quarter: an event set of ~700 stock-quarters in twenty-one years,
+nearly all sharing a handful of dates, which is the clustering that killed the example event
+claim before a single trial was spent.
+
+Retired without a registration. **Trial count unchanged at 7.** Nothing in the daily file beyond
+shares outstanding, market capitalisation and dollar volume was read; no return or price series
+was opened.
+
+**Lesson for the next candidate.** The premise-sizing step cost an evening and no trial, and it
+settled the question the paper leaves open for this era: by 2005 the mutual-fund channel is too
+thin and too arbitraged to force a price. The structural seller for the next claim has to own a
+larger share of the company than a distressed mutual fund does, or be forced to sell faster.

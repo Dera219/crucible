@@ -720,3 +720,30 @@ still over the line; ordinary churn over the same span 4.2%. The registration se
 point in time, is 130 events, **54 high-block / 76 low-block** at the 10% line. Fifty-four events
 at a 27% per-event dispersion resolve about 10% at t ≥ 2.73, so the claim registers at 10%, and
 the risk that a true but smaller effect comes back UNINFORMATIVE is registered with it.
+
+---
+
+## 2026-10-15 — Trial 8 registered and SEALED before it was run
+
+**Deal-break unwinds.** The claim, the event rule, the windows and the bars are fixed in a
+registration file in the private registrations folder; only its hash is published here, and the
+file is revealed in full, whatever the result, after the one run.
+
+- registration.json SHA-256: `7037402fda62719e8603a63e77249ab0bc911d72f7f5bc509e125fd070c39639`
+- hypothesis fingerprint: `db6ba5e39c3681be`
+- event set: 130 deal breaks 2005–2025 (the clean rule of the addendum above), split 54 / 76 at
+  a 10% point-in-time arbitrage block; the set's SHA-256 is inside the sealed file
+- bars: on the high-block half, mean CAR over offsets 6–60 ≥ 10%, |t| ≥ 2.73 (Bonferroni over
+  8 lifetime trials), win rate ≥ 55%, clustering ≤ 30%, dropped ≤ 20%, at least 40 events; and
+  the high-block half's mean must exceed the low-block half's by at least 3 points. Both, or it
+  dies. The pressure window (offsets 0–5) is reported and never graded.
+- holding rules registered in the runner: day 0 is the first session on or after the 8-K's
+  period of report; a listed day without a trade carries zero abnormal return; a target delisted
+  inside the window takes CRSP's delisting return then holds cash at minus the market, so a
+  target taken out by a new bidder stays in the sample.
+- risk registered: 54 events at ~27% per-event dispersion resolve ~10%; a smaller true effect
+  comes back UNINFORMATIVE and still spends the trial.
+
+Sealed by Chidera's instruction after critique; mechanism drafted the same day after the two
+fund-side sellers retired on paper. No return has been read. The run is his, once:
+`run_event_study.py --final`; RUN.lock enforces it. **Trial count becomes 8 when it runs.**

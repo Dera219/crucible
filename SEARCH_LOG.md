@@ -195,7 +195,7 @@ has to be built rather than downloaded.
 
 ## Running trial count
 
-**7** trials as of 2026-10-15: the five exploratory looks above, plus trials 6 and 7, each
+**8** trials as of 2026-10-15: the five exploratory looks above, plus trials 6, 7 and 8, each
 registered, sealed and killed (see the end of this file). Add these to the trial budget of any
 hypothesis registered against this universe, and pass the honest total to `deflated_sharpe`.
 
@@ -747,3 +747,58 @@ file is revealed in full, whatever the result, after the one run.
 Sealed by Chidera's instruction after critique; mechanism drafted the same day after the two
 fund-side sellers retired on paper. No return has been read. The run is his, once:
 `run_event_study.py --final`; RUN.lock enforces it. **Trial count becomes 8 when it runs.**
+
+---
+
+## 2026-10-15 — Trial 8 RUN and KILLED. Revealed in full, as committed.
+
+Run once by Chidera at 12:41 ET with `run_event_study.py --final`; RUN.lock holds the start
+stamp. The sealed registration, both scripts, the sizing scripts, the journal, the lock and the
+result are published under `registrations/trial-8-deal-break-unwinds/`; `registration.json`
+hashes to the SHA-256 sealed above (`7037402f…c39639`, fingerprint `db6ba5e39c3681be`), and the
+event set hashes to the value inside it.
+
+**The events.** 130 deal breaks 2005–2025 under the sealed rule, split at a 10% point-in-time
+arbitrage block: 54 high, 76 low. 52 and 75 placed; 2 and 1 dropped (a window running past the
+data). Day 0 is the first session on or after the termination 8-K's period of report.
+
+**The result.**
+
+| | high-block half (the claim) | low-block half (the control) |
+|---|---|---|
+| events | 52 | 75 |
+| pressure window, offsets 0–5, mean CAR (not graded) | **−9.13%** | −3.37% |
+| traded window, offsets 6–60, mean CAR | **−0.61%** (bar ≥ +10%) | −2.28% |
+| t across events | −0.22 (bar ≥ 2.73) | −0.86 |
+| win rate | 50% (bar ≥ 55%) | 43% |
+| clustering | 0% | 3% |
+| high minus low over the traded window | **+1.67%** (bar ≥ +3.00%) | |
+
+Not underpowered: the high-block sample could resolve 7.4%, so an effect of the registered size
+would have shown. **Killed**, on both bars at once.
+
+**What this says.** The first half of the mechanism is visible and is exactly where the
+registration put it: in the week after a termination, targets with a large arbitrage block fall
+9% against the market and targets without one fall 3%. The selling is real and it scales with
+the block. The second half is absent: from session 6 to session 60 the high-block targets go
+nowhere (−0.6%, half of them up, half down). The price the block is sold into is the price that
+stays. Whatever absorbs the arbitrageurs' shares in that week does so at a level the market then
+accepts, so there is no overshoot left for a patient buyer to collect.
+
+**What it does not say, and what is retired with it.** It does not say the break is pure
+information: the extra 6 points of decline in the high-block half is tied to the block, not to
+the deal's news. It says that the pressure clears inside the selling week, which is the window a
+small account cannot be in — short into it, and you are doing what the busted-deal desks already
+do. Any later window, any other block line, any subset of breaks on this population is a search
+and is not being run.
+
+**Lesson for the next candidate, the third of the week.** Three structural-seller claims in two
+days found the seller (spin-off holders, distressed and liquidating funds, merger arbitrageurs)
+and one of them found its selling on the tape, and none found a recovery after it. The
+recovery is the part that needs slow buyers, and in this era the buyers are not slow: the block
+is absorbed at a new level inside days. A forced-selling claim registered on this universe now
+needs a reason the buyers cannot arrive for weeks — a listing or mandate constraint on the
+buying side — stated and sized before anything is sealed; "no catalyst" is not such a reason.
+
+**Lifetime trials: 8.** Eight registered claims on this universe, eight dead; the next bar is
+t ≥ 2.77.

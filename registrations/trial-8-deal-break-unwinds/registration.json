@@ -1,0 +1,41 @@
+{
+  "block_line": 0.1,
+  "fingerprint": "db6ba5e39c3681be",
+  "hypothesis": {
+    "claim": "When an announced acquisition of a listed US target is terminated, the arbitrageurs holding the target's float must sell within days and press the price through its standalone value; bought at the close of the 5th session after the termination and held to the close of the 60th, targets whose arbitrage block was at least 10% of shares outstanding earn a positive abnormal return, and by at least 3 points more than targets whose block was smaller.",
+    "edge_source": "structural_constraint",
+    "horizon_bars": 60,
+    "kill": {
+      "max_clustering": 0.3,
+      "max_dropped_fraction": 0.2,
+      "max_parameters": 3,
+      "min_events": 40,
+      "min_mean_car": 0.1,
+      "min_t_statistic": 2.73,
+      "min_win_rate": 0.55,
+      "require_deflation_survival": true
+    },
+    "mechanism": "Once a deal is announced, merger arbitrageurs buy the target to collect the spread between the market price and the offer, hedged against the deal closing, until they hold a large block of the float. When the deal is terminated their mandate ends with it: a broken target is a directional equity position their rules do not allow, the loss on the break brings redemptions, and the hedge comes off at the same time. They sell the block inside days into a name with no catalyst left, so the price falls through the standalone value and recovers over the following months as value investors re-underwrite the company at the speed of a committee. Event funds buy catalysts and a broken deal has none for months; the names are mid and small caps, twenty to forty a year, so the block is too small and too slow for the funds that could otherwise absorb it, and the part that survives busted-deal desks is the weeks of waiting at a size a small account can hold.",
+    "name": "deal-break-unwinds",
+    "parameters": [],
+    "trial_budget": 8,
+    "universe": "CRSP CIZ daily US common stock (crucible's CIZ common-stock filter), 2005-2025. Events: deal breaks built from EDGAR indices (WRDS SEC Analytics Suite): a target-side filing (PREM14A, DEFM14A or SC 14D9; information statements excluded) with a merger-agreement exhibit (EX-2.*) on an 8-K within the year before it, no S-4 by the same filer (the acquirer's side), then an 8-K Item 1.02 termination within 540 days with no Form 25/15 delisting in the 120 days after it; no SPAC by name; the target mapped to a PERMNO through the CIK-CUSIP link or CIK-GVKEY-PERMNO, US common stock on the quarter-end before day 0, pre-deal market cap of at least $100M. Day 0 is the first session on or after the 8-K's period of report. 130 events; the block from s34 13F holdings at the last report public on day 0 (45-day filing lag) against the quarter-end before the agreement 8-K splits them 54 high (>= 10%) / 76 low. Abnormal = return minus the equal-weighted investable mean of the slice. A listed day without a trade carries zero abnormal return; a target delisted inside the window takes CRSP's delisting return on the session after its last trade and the proceeds earn zero raw return, i.e. minus the market, for the rest of the window; a target that receives a new bid inside the window stays in the sample. Traded window: offsets 6-60.",
+    "warmup_bars": 0
+  },
+  "lifetime_trials_before": 7,
+  "mechanism_gap": 0.03,
+  "notes": "Sealed 2026-10-15. The block line (10%) and the event rule were fixed when the premise was sized, before any return was read; the sized block's median was 10.2% (11.0% before the GVKEY link recovered 82 smaller targets), ordinary churn over the same span 4.2%, the point-in-time block's median 6.9% on the clean set. Two bars, both required: KILL on the high-block half, and high minus low >= MECHANISM_GAP over the traded window; the pressure window (offsets 0-5) is reported and never graded. Entry +5 and exit +60 are fixed in code, not searched. Run once with run_event_study.py --final; RUN.lock enforces it.",
+  "provenance": {
+    "build_breaks_py_sha256": "7747d8aee0704e8a506bbb3c52c4c120266f1c02413d45fbc4174a11c4febfc8",
+    "events_csv_rows": 130,
+    "events_csv_sha256": "5631c35304706c169057f804e966da6a5fc2e3cacda9a035125f611f32d95379",
+    "run_event_study_py_sha256": "8739fa2f2ab412f550958d519376d8e60ec68bee4126abdd525e9536801ceb02",
+    "sealed_hypothesis_py_sha256": "4718ddc3387f362da99864846679b8871c1c9f9fcde6f7e913a1ebee590c681a",
+    "size_premise_py_sha256": "c93e9408e2f8fb4355ecf6549cd1b5e1e6b4f48fa76f4711a19028203e4bd13d"
+  },
+  "sealed_at": "2026-10-15T12:35:00.695171-04:00",
+  "traded_window": [
+    6,
+    60
+  ]
+}

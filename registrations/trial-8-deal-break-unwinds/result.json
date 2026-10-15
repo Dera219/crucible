@@ -1,0 +1,28 @@
+{
+  "fingerprint": "db6ba5e39c3681be",
+  "finished": "2026-10-15T12:41:46.036587-04:00",
+  "verdict": "killed",
+  "why": "mechanism bar failed: high -0.61% minus low -2.28% = +1.67% < +3.00%",
+  "high": {
+    "mean_car": -0.006108697345461429,
+    "t_statistic": -0.22428663183325298,
+    "win_rate": 0.5,
+    "n_events": 52,
+    "clustering": 0.0,
+    "detectable_car": 0.07435460427043245,
+    "underpowered": false,
+    "reasons": [
+      "mean CAR -0.0061 is below +0.1000",
+      "|t| 0.22 is below 2.73",
+      "win rate 0.50 is below 0.55; the mean is being carried by a few events"
+    ]
+  },
+  "low": {
+    "mean_car": -0.022805483140756307,
+    "t_statistic": -0.8616203541839046,
+    "win_rate": 0.4266666666666667,
+    "n_events": 75,
+    "clustering": 0.02666666666666667
+  },
+  "unplaced_past_data": 0
+}

@@ -195,7 +195,7 @@ has to be built rather than downloaded.
 
 ## Running trial count
 
-**6** trials as of 2026-10-14: the five exploratory looks above, plus trial 6, which was
+**7** trials as of 2026-10-15: the five exploratory looks above, plus trials 6 and 7, each
 registered, sealed and killed (see the end of this file). Add these to the trial budget of any
 hypothesis registered against this universe, and pass the honest total to `deflated_sharpe`.
 
@@ -506,3 +506,67 @@ its decay risk stated inside it, and nothing queried before this seal except ide
 
 If the claim is killed, it will be revealed here in full. Not yet run when this was written.
 **Trial count: 6, becoming 7 the moment it runs.**
+
+---
+
+## 2026-10-15 — Trial 7 RUN and KILLED. Revealed in full, as committed.
+
+Scored once at 01:29:58 UTC on 2026-10-15, about three hours after the sealing entry above. The
+registration is now public at `registrations/trial-7-spinoff-holder-unloading/` in this
+repository. Verify it against the hash published before the run:
+
+```
+shasum -a 256 registrations/trial-7-spinoff-holder-unloading/registration.json
+# b34026c32b32019299125802a426487dfb9d770fcb98d558dfd42988f602e82c
+```
+
+The three scripts in that folder match the SHA-256s recorded inside `registration.json`. The event
+list is derived from licensed CRSP data and is not published; its hash is in the registration.
+
+**The claim.** A spun-off company's shares are distributed to the parent's holders, most of whom
+cannot keep them, and are sold down over the first weeks of trading; bought at the close of the
+30th session after the first trade and held to the close of the 150th, they earn a positive
+abnormal return. The mechanism: index funds hold the spinco only if it qualifies for their index,
+large-cap and dividend mandates hold a stock of the parent's size and yield, many holders never
+chose it; they sell over the first several weeks into a name with no coverage and no natural
+owner, and the price recovers over the following months as the sellers finish.
+
+**The events.** 298 spin-offs with a new listing within five days of the ex-date, US common
+stock on the day of the first trade, first traded 2005-2025, any parent. 293 placed, 5 dropped
+(their 150-session window runs past the end of the data). Two holding rules were registered:
+a listed day with no trade carries zero abnormal return, and a spinco delisted inside the
+window takes CRSP's delisting return and then holds cash at minus the market.
+
+**The result.**
+
+| criterion | bar | result |
+|---|---|---|
+| mean abnormal return, offsets 31-150 | >= +7.00% | **+0.29%** |
+| \|t\| across events | >= 2.69 (Bonferroni over 7 trials) | **0.14** |
+| win rate | >= 50% | 52% |
+| events placed / dropped | >= 30 / <= 20% | 293 / 2% |
+| clustering | <= 50% | 33% |
+
+Not underpowered: the sample could resolve 5.65%, below the 7% bar, so a real effect of the
+registered size would have been seen. **Killed**, and cleanly: a mean of three tenths of a
+percent over 120 sessions, with half the events up and half down, is the absence of the effect,
+not a sample too small to find it.
+
+**What this says.** The mechanism predicted a price pressed by holders unloading and recovering
+once they finish. Whatever pressure exists is not followed by a recovery in sessions 31 to 150:
+either the unloading is priced at once, or the holders who cannot keep a spinco are a smaller
+share of the float than the story assumes, or the buyers who can hold it are already there. The
+published spin-off drift of the 1990s is not present in this population at this horizon.
+
+**What it does not say, and what is retired with it.** Trial 6 found the first days of an S&P 500
+orphan losing to the market; this trial finds the following months flat for all spin-offs. The
+spin-off population has now carried two registered claims and killed both. Any further window on
+it — earlier, later, a different subset — is a search, and is not being run. The next candidate
+has to come from a different forced seller.
+
+**Lesson for the next registration:** the identifier-level checks introduced this week (listed
+from offset 0, frequent enough to resolve the deflated bar) worked exactly as intended — the
+post-reorg candidate died on paper, this one died in the data — and the cost of the second was
+one trial. A mechanism's premise ("holders who cannot keep it") should be sized before it is
+registered: what fraction of the float does the constrained holder actually own? That number is
+answerable from 13F data before any return is read, and it was not asked here.

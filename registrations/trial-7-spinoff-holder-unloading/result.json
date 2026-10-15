@@ -1,0 +1,16 @@
+{
+  "fingerprint": "85c09064ec2d4ad0",
+  "finished": "2026-10-14T21:29:58.417059-04:00",
+  "verdict": "killed",
+  "mean_car": 0.0028551883844484907,
+  "t_statistic": 0.13587303081844399,
+  "win_rate": 0.5221843003412969,
+  "n_events": 293,
+  "clustering": 0.3310580204778157,
+  "detectable_car": 0.056526719893583634,
+  "underpowered": false,
+  "reasons": [
+    "mean CAR +0.0029 is below +0.0700",
+    "|t| 0.14 is below 2.69"
+  ]
+}

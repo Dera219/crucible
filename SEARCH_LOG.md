@@ -626,3 +626,43 @@ was opened.
 settled the question the paper leaves open for this era: by 2005 the mutual-fund channel is too
 thin and too arbitraged to force a price. The structural seller for the next claim has to own a
 larger share of the company than a distressed mutual fund does, or be forced to sell faster.
+
+---
+
+## 2026-10-15 — Mutual-fund liquidation unwinds, retired on paper. NOT a trial: no return was read.
+
+The candidate after the fire-sale sizing was the same seller forced faster: a fund being
+liquidated must sell every position by a date. The claim was that where such a fund owns a few
+percent of a small company, that selling is many days of volume forced through in weeks, the
+price is pressed into the liquidation date and recovers over the following one to three months.
+The rule and the line were fixed before the count (private registrations folder,
+`liquidation-unwinds/size_premise.py`, aggregate record beside it): proceed only with at least 150
+event stocks 2005–2025 — a liquidating domestic-equity fund's position of at least 2% of shares
+outstanding and at least 5 days of average dollar volume at its last report — with no calendar
+month holding more than a quarter of them.
+
+**The count.** 590 liquidated active domestic-equity funds 2005–2025 (every share class dead, the
+last one coded L), 566 with an s12 report inside twelve months of the last NAV (median 31 days
+before it), 40,266 positions in US common stock on those reports.
+
+| statistic | value |
+|---|---|
+| median position | 0.00% of the company, 0.0 days of volume |
+| 99th-percentile position | 0.18% of the company, 0.4 days of volume |
+| largest position per fund, median / 90th percentile | 0.02% / 0.30% of the company |
+| positions ≥ 1% of the company and ≥ 3 days of volume | 11, in 6 funds |
+| positions at the registered line (≥ 2%, ≥ 5 days) | **1** (June 2020, a $46M company) |
+
+**Verdict.** The seller is forced, but it owns nothing. The funds that get liquidated are small
+(the one qualifying fund ended at $18M) and diversified into liquid names; their unwinding is
+invisible against normal volume. One event in twenty-one years against a bar of 150.
+
+Retired without a registration. **Trial count unchanged at 7.** Same data as the fire-sale
+sizing; nothing new was pulled and no return or price series was opened.
+
+**What the two sizings together say.** The mutual-fund channel is closed on both sides: a
+distressed fund holds about seven percent of the stocks it presses and sells a tenth of itself; a
+liquidating fund holds a few hundredths of a percent and sells all of it. Neither moves a price
+in this era. The next structural seller has to own the company in blocks — tens of percent of the
+float — and be forced out on a date: merger arbitrageurs at a deal break, or holders bound by an
+index rule, are the sizes that remain. Either is sizeable from holdings before a return is read.

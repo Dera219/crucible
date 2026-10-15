@@ -439,3 +439,45 @@ is how a search starts presenting itself as research.
 
 **Lesson for the next registration:** derive the traded window from the mechanism's predicted
 price PATH (down, then up), not from its duration.
+
+---
+
+## 2026-10-15 — Post-reorganization equity, retired on paper. NOT a trial: no return was read.
+
+The candidate after trial 6 was the creditor-forced selling of new equity after a Chapter 11
+emergence (the Eberhart–Altman–Aggarwal effect). Before any registration, the event rule was built
+from identifiers alone — CRSP's delisting table (`DelReasonType`, `DelActionType`) and the daily
+slices' PERMNO/PERMCO/classification columns, never a price or a return — and the count is the
+verdict:
+
+| rule | 1990–2025 | 2005–2025 |
+|---|---|---|
+| old equity delisted with reason `BKPY`, same PERMCO relists on a CRSP exchange 1–30 months later, US common | 31 | 15 |
+| any dropped-by-exchange reason (`BKPY`, `INSC`, `INSF`, `FING`, `DELQ`, `LP`, `EQRQ`, `CORQ`, `MVOT`), same window | 84 | 38 |
+| the same, 1–60 months | 105 | 49 |
+
+Ticker and issuer-CUSIP matching added nothing beyond PERMCO. Two things set the ceiling, and
+neither is capital:
+
+1. **Frequency.** Even pooling 1990–2025, about a hundred emergences are visible. At a per-event
+   volatility near 40% over a 100-session window the smallest effect a hundred events can resolve
+   at the seven-trial bar (t ≥ 2.69) is about 11%; the registered claim was 8%, and the
+   2005–2025 regime alone (≤49 events) resolves ~15%. The study would come back UNINFORMATIVE,
+   and an uninformative trial still spends one.
+2. **Selection.** Most post-reorg equity trades OTC first. CRSP sees only the emergences that
+   listed, or relisted, on an exchange — the ones that went well enough to uplist — so the
+   measurable sample is selected on the outcome the claim is about, in the direction that would
+   flatter it. No window fixes that; only OTC return data would, and there is none here.
+
+The Florida–UCLA–LoPucki Bankruptcy Research Database (free, ~1,000 large public bankruptcies
+1979–2022) would give true emergence dates but not OTC returns, so it changes the count by a few
+and the selection problem not at all.
+
+Retired without a registration. **Trial count unchanged at 6.** The event builder is kept in the
+private registrations folder, marked retired, because the funnel numbers above are the kind of
+thing a later session re-derives at a cost of an afternoon.
+
+**Lesson for the next candidate:** an event must be exchange-listed from offset 0 — the spin-off
+set had that property and this one does not — and frequent enough that the deflated bar can be
+resolved at a plausible dispersion. Both are answerable from identifiers before anything is
+registered, and they should be answered first.

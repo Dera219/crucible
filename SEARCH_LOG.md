@@ -481,3 +481,28 @@ thing a later session re-derives at a cost of an afternoon.
 set had that property and this one does not — and frequent enough that the deflated bar can be
 resolved at a plausible dispersion. Both are answerable from identifiers before anything is
 registered, and they should be answered first.
+
+---
+
+## 2026-10-15 — Trial 7 registered and SEALED before it was run
+
+A spin-off claim, registered with every field that defines it fixed — event rule, window, the
+two holding rules, mechanism, kill criteria, and the code that runs it — and **sealed** by
+commit-reveal exactly as trial 6 was: the full registration lives in a private repository, and
+only its hash is published here, so this entry proves the claim existed in exactly this form
+before any result did, without saying what it is.
+
+- **SHA-256 of `registration.json`:** `b34026c32b32019299125802a426487dfb9d770fcb98d558dfd42988f602e82c`
+- **`Hypothesis.fingerprint`:** `85c09064ec2d4ad0`
+
+What can be said now: it is a different claim from trial 6 — different sellers, a different
+horizon, a different population — and it was proposed the day after that kill. Whether that is
+research or search was put to Chidera in those words, with trial 6's own warning quoted back,
+and he ruled research; the registration records that ruling. The mechanism paragraph was drafted
+by Claude at his instruction and critiqued by him, under a rule he lifted the same day; the
+earlier reasoning about why that is dangerous (training data is the most-public information in
+finance, and a menu of mechanisms is a search) still governs how it was done: one claim, no menu,
+its decay risk stated inside it, and nothing queried before this seal except identifiers.
+
+If the claim is killed, it will be revealed here in full. Not yet run when this was written.
+**Trial count: 6, becoming 7 the moment it runs.**

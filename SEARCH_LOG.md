@@ -666,3 +666,49 @@ liquidating fund holds a few hundredths of a percent and sells all of it. Neithe
 in this era. The next structural seller has to own the company in blocks — tens of percent of the
 float — and be forced out on a date: merger arbitrageurs at a deal break, or holders bound by an
 index rule, are the sizes that remain. Either is sizeable from holdings before a return is read.
+
+---
+
+## 2026-10-15 — Deal-break unwinds: the premise, sized. CLEARS the pre-stated line. NOT a trial: no return was read.
+
+The third candidate of the week, drafted after both mutual-fund sellers retired on paper:
+merger arbitrageurs hold a block of a target's float by the time a deal collapses, their mandate
+ends with the deal, they sell inside days, and the holder base is rebuilt slowly. The line was
+written before anything was pulled: at least 150 breaks 2005–2025, no calendar month holding
+more than 15% of them, and a median new-holder block of at least 10% of shares outstanding.
+
+**The build.** UMD's WRDS subscription has no SDC, so the withdrawn deals were built from EDGAR
+indices (five SEC Analytics Suite pulls, one 13F pull; queries and the rule in
+`WRDS_DEAL_BREAKS.md`): a target-side proxy or 14D-9, then an 8-K Item 1.02 termination within
+540 days, no delisting in the 120 days after it, no S-4 by the filer. 160 breaks with a pre-deal
+cap of at least $100M; the list carries Williams, Office Depot, Cigna, both Rite Aid breaks,
+Time Warner Cable, Baker Hughes, KLA-Tencor, Alliance Data, First Horizon, Rogers, iRobot,
+Spirit and Tegna, and also some acquirers with an unrelated termination and seven SPACs.
+
+**The numbers** (143 breaks with 13F holdings on both dates):
+
+| statistic | value |
+|---|---|
+| breaks / busiest month | 160 / 3.1% |
+| median new-holder block at the last 13F before the break | **11.0%** of shares outstanding (p25 3.3%, p75 17.9%, p90 29.2%) |
+| the same, window dated from the merger-agreement 8-K | 11.0% |
+| baseline: same window length, ending before the deal | 5.3% |
+| agreement-confirmed, non-SPAC subset (111) | 11.4%; tender-offer targets (SC 14D9) 21.8%, information-statement deals (PREM14C) 2.7% |
+| total 13F ownership before / at the break | 73.6% / 75.8% |
+| net additions by all managers (new holders plus existing holders adding) | 22.5% median |
+
+**Verdict.** The three bars are met and the candidate goes to registration, the first since
+trial 7. The honest reading of the block: ordinary holder churn over the same span is five
+percent, so the part attributable to the deal is about six points at the median and far more in
+the top quartile (Alliance Data 53%, Genesco 54%, CVR Energy 85%); tender-offer targets carry
+the purest block and controlled-company deals none.
+
+**What is already known about the registration, written before any return is read.** The event
+rule will require the merger-agreement exhibit and exclude SPAC names and the information-statement
+forms, which leaves about 104 of the 160 at the present identifier link; a second CIK → PERMNO
+link through Compustat is expected to recover many of the 253 breaks lost at the link, and that
+recovery is identifier work. The deflation bar is t ≥ 2.73 over 8 trials. Whether the events are
+all breaks or only those with a block above the line is the one open choice, and it is being made
+before sealing, not after.
+
+Trial count unchanged at 7 until the seal.

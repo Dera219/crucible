@@ -712,3 +712,11 @@ all breaks or only those with a block above the line is the one open choice, and
 before sealing, not after.
 
 Trial count unchanged at 7 until the seal.
+
+**Addendum, same morning, after the link recovery.** A second CIK → GVKEY → PERMNO route through
+the CRSP/Compustat link recovered 82 more breaks: 193 with a pre-deal cap of at least $100M, 172
+with 13F coverage. The sized median block fell to **10.2%** (the recovered targets are smaller),
+still over the line; ordinary churn over the same span 4.2%. The registration set, clean and
+point in time, is 130 events, **54 high-block / 76 low-block** at the 10% line. Fifty-four events
+at a 27% per-event dispersion resolve about 10% at t ≥ 2.73, so the claim registers at 10%, and
+the risk that a true but smaller effect comes back UNINFORMATIVE is registered with it.

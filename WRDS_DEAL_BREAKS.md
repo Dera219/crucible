@@ -25,6 +25,19 @@ return. The rule that turns filings into deal breaks is in the private registrat
 The 13F pull depends on the event list, so it is rerun whenever the deal rule changes: the
 CUSIP list is `deal_break_cusips.txt`, written by the builder beside the events.
 
+Added the same morning, to recover the breaks the 13D/G-based link could not map:
+
+| WRDS query | form | what | file |
+|---|---|---|---|
+| 11789715 | CRSP → Annual Update → CRSP/Compustat Merged → Compustat CRSP Link | the 242 unmapped CIKs typed as codes (format `cik`), link types LC/LU/LS, link + identifying variables | `ccm_link.csv.gz` (150 rows) |
+| 11789720 | SEC Analytics Suite → SEC Linking Tables → CIK-GVKEY Link Table | the same 242 CIKs, all four sources, valid and name-mismatch links | `sec_cik_gvkey_link.csv.gz` (913 rows) |
+| 11789880 | Compustat CRSP Link again | the 68 GVKEYs from the CIK-GVKEY link that the first CCM pull lacked, typed as codes (format `gvkey`) | `ccm_link_gvkey.csv.gz` (12 rows) |
+| 11789892 | s34 Type 3 again | the 32 CUSIPs the GVKEY route added | `s34_deal_targets_extra.csv.gz` (102,102 rows) |
+
+Whole-database versions of the two link tables (11789680, 11789684) sat in the WRDS queue for
+twelve minutes and were killed; the narrow ones took 23 to 53 minutes to start that morning,
+against seconds earlier in the day. Type codes into the box rather than pull a whole table.
+
 Form notes beyond those in `WRDS_FIRE_SALES.md`: the 8-K items form chooses sections with radio
 buttons, not checkboxes; the exhibits form's date pickers are month-granular and its form
 picker's values are quoted (`'8-K'`); every form's submit button is `wrds-query-form-submit-button`
@@ -45,14 +58,17 @@ and clicking it from script is more reliable than clicking by position; a tender
 - **block**: 13F shares at the last quarter-end before day 0 held by managers with none at the
   quarter-end at or before t1 − 150 days, over shares outstanding.
 
-Funnel: 6,548 episodes → 446 dropped as bidders → 517 breaks → 391 linked → 264 mapped → 248 US
-common → **160** with a pre-deal cap of at least $100M (156 CUSIPs). Of the 160, 133 carry a
-merger-agreement exhibit within a year before t1 and 7 are SPACs by name.
+Funnel: 6,548 episodes → 446 dropped as bidders → 517 breaks → 391 linked → 264 mapped through
+the CUSIP link + 82 through CIK → GVKEY → PERMNO → 308 US common → **193** with a pre-deal cap of
+at least $100M (187 CUSIPs, 184 with 13F rows). Of the 193, 164 carry a merger-agreement exhibit
+within a year before t1 and 9 are SPACs by name.
 
-## What the registration will need beyond this
+## The registration set
 
-A better CIK → PERMNO link (the 13D/G-based table loses 126 of 517 breaks and the names history
-another 127): Compustat's `cik` through the CRSP/Compustat link, which UMD carries. The event
-rule for registration should require the merger-agreement exhibit, exclude SPAC names and the
-information-statement forms (PREM14C/DEFM14C: controlled companies, no arbitrage block), and
-state whether the events are all breaks or only those with a block above the 10% line.
+The event rule for registration requires the merger-agreement exhibit and excludes SPAC names
+and the information-statement forms (PREM14C/DEFM14C: controlled companies, no arbitrage block):
+**130** events with 13F coverage on both dates. The block for the split is point in time — the
+last 13F public on day 0, a report being due 45 days after its quarter-end — and at the 10% line
+the set divides **54 high-block / 76 low-block**. The sized (non-public) block has a median of
+10.2% over 172 covered breaks; the public one 6.0%, and 6.9% on the clean set; ordinary churn
+over the same span is 4.2%.

@@ -641,7 +641,7 @@ event stocks 2005–2025 — a liquidating domestic-equity fund's position of at
 outstanding and at least 5 days of average dollar volume at its last report — with no calendar
 month holding more than a quarter of them.
 
-**The count.** 590 liquidated active domestic-equity funds 2005–2025 (every share class dead, the
+**The count.** 589 liquidated active domestic-equity funds 2005–2025 (every share class dead, the
 last one coded L), 566 with an s12 report inside twelve months of the last NAV (median 31 days
 before it), 40,266 positions in US common stock on those reports.
 

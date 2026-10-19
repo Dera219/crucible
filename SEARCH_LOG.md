@@ -843,3 +843,57 @@ neither retires nor supports this claim. No outcome has been read.
 Sealed by Chidera's instruction after critique of two weaknesses (the calendar-day maximum and
 the independence of prints), both fixed before the seal. The run is his, once:
 `run_trial.py --final`; RUN.lock enforces it.
+
+---
+
+## 2026-10-19 — Trial 9 run and KILLED; the registration revealed
+
+Run once by Chidera, 10:38–11:41 ET, under RUN.lock, after the seal above. Revealed in full in
+`registrations/trial-9-kalshi-weather/` (the registration, the journal, the lock, the result,
+every script and the sizing record; the registration set itself is Kalshi's public trade tape
+and is not republished here: its SHA-256 is inside the sealed file, and `size_premise.py
+register` rebuilds it byte for byte from the public endpoints). The folder's registration.json
+hashes to the SHA-256 sealed above (`f5e6dcbb…e48936`, fingerprint `f71dc60c2a8a6c1c`).
+
+**The result.** 22,395 opportunities over 1,478 station-days and 65 calendar days, none dropped.
+
+| bar | registered | measured |
+|---|---|---|
+| mean net profit per $1 contract, after fee | ≥ +0.030 | **−0.019** |
+| t, clustered by calendar day | ≥ 2.77 | **−3.84** |
+| station-days with positive value | ≥ 55% | **31.7%** |
+| top 10% of station-days' share of the positive total | ≤ 50% | 62% |
+| dropped | ≤ 20% | 0% |
+| Brier(Blend) better than Brier(price) by | ≥ 0.010 | **−0.028** (price 0.1377, Blend 0.1660) |
+
+Not underpowered: the sample resolves 1.4 points, the registered effect was 3. **Killed**, on
+every bar at once, and most of all on the mechanism bar.
+
+**What this says.** The crowd in Kalshi's temperature brackets is a better forecaster than the
+National Blend of Models on exactly the prints a Blend-following bot would take. Every price
+that looked stale against the Blend was, on average, the Blend being wrong: its 2°F bracket
+concentration is too sharp for a one-day-ahead maximum, and the crowd's flatter distribution
+is the better-calibrated one. Before the fee the registered strategy roughly breaks even
+(−0.4 cents); the fee makes it a loser. The sizing had already found the two centres within
+0.8°F on the median day; the trial found that where they differ, the crowd is right more often.
+
+**What it does not say.** It does not say these markets are efficient against every forecast.
+It says a free, public, four-times-daily blend is not sharper than the people trading them,
+which is what a market with $290k a day of pre-noon volume should look like. A forecast that
+beats the crowd here would have to beat the Blend first, and nothing public does that for free.
+
+**What is retired with it.** The Blend as a signal on Kalshi temperature brackets, highs and
+lows alike: the lows were held back as a separate claim and are not run, because the mechanism
+bar that killed this one is the same bar they would face. Any other spread, margin, window or
+station subset on this tape is a search and is not being run.
+
+**Lesson for the next candidate.** "People do it" was the premise; the trial measured who the
+people are. The takers on the Blend's side of these prints (3.2M contracts in the sizing) were
+losing to the crowd too, so the competition we counted was not the competition that matters.
+In a venue this liquid, the information edge has to be information the crowd does not already
+hold; a public model is not that. The next capacity-limited claim needs an input that is either
+faster than the crowd or unavailable to it, named and sized before the seal, as the clean-window
+rule was here.
+
+**Lifetime trials: 9.** Nine registered claims, nine dead; eight on CRSP, one on Kalshi. The
+next bar is t ≥ 2.81.

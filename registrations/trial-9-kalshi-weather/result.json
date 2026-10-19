@@ -1,0 +1,30 @@
+{
+  "fingerprint": "f71dc60c2a8a6c1c",
+  "started": "2026-10-19T10:38:54.963435-04:00",
+  "finished": "2026-10-19T11:41:27.430247-04:00",
+  "verdict": "killed",
+  "survived": false,
+  "reasons": [
+    "mean net -0.0187 < 0.03",
+    "t -3.84 < 2.77",
+    "win rate 0.317 < 0.55",
+    "clustering 0.62 > 0.5",
+    "Brier gap -0.0283 < 0.01 (market 0.1377, Blend 0.1660)"
+  ],
+  "station_days": 1478,
+  "calendar_days": 65,
+  "cluster_se": 0.004873684884084477,
+  "dropped_station_days": 0,
+  "prints": 22395,
+  "prints_graded": 22395,
+  "mean_net_per_contract": -0.018734872109370138,
+  "sd": 0.17176950935947521,
+  "t_statistic": -3.8440876985196155,
+  "win_rate": 0.31732070365358594,
+  "clustering": 0.6199803234932524,
+  "dropped_fraction": 0.0,
+  "brier_blend": 0.16596600339253512,
+  "brier_market": 0.1377010538066533,
+  "detectable_mean": 0.013500107128914002,
+  "underpowered": false
+}

@@ -1,0 +1,42 @@
+{
+  "brier_gap": 0.01,
+  "cutoff_utc_hour": 12,
+  "fingerprint": "f71dc60c2a8a6c1c",
+  "hypothesis": {
+    "claim": "In Kalshi's daily maximum-temperature markets for 24 US stations, a contract bought in the clean window (open to 12:00Z of the market day), once per bracket per National Blend run, at the first price the Blend's implied probability exceeds by the taker fee plus five points, earns net of that fee at least three cents per dollar of contract on average across station-days, with the standard error clustered by calendar day, and the Blend's probabilities beat the traded prices as forecasts of those outcomes.",
+    "edge_source": "information_processing",
+    "horizon_bars": 1,
+    "kill": {
+      "max_clustering": 0.5,
+      "max_dropped_fraction": 0.2,
+      "max_parameters": 3,
+      "min_events": 100,
+      "min_mean_car": 0.03,
+      "min_t_statistic": 2.77,
+      "min_win_rate": 0.55,
+      "require_deflation_survival": true
+    },
+    "mechanism": "The other side is a resting order placed by a retail trader quoting a temperature bracket on intuition, a glance at a phone forecast, or a position they want out of, and left standing overnight. The National Blend of Models is the official statistical blend of every operational model, published free four times a day with its own spread, and it is a sharper estimate of tomorrow's high than a guess. In the hours before the day's maximum can be observed, nothing but a forecast can price these brackets, so a price far from the Blend is a stale quote, not information the Blend lacks. The brackets are a few hundred dollars deep and the markets settle in a day, which is why no fund stands there to correct them, and why a bot with a small account can: the capacity is the limit, and the limit is well above what a small account needs.",
+    "name": "kalshi-daily-highs-vs-nbm",
+    "parameters": [
+      "margin_over_fee",
+      "spread_floor_f"
+    ],
+    "trial_budget": 9,
+    "universe": "Kalshi daily maximum-temperature series for 24 US stations (the series in size_premise.py HIGHS), markets closing 2026-07-20 to 2026-10-18, every print in each market between its open and 12:00Z on its day, from Kalshi's public trade tape. Forecast: NBM short-range (NBS) runs from the Iowa Environmental Mesonet archive; the forecast day-maximum is the larger of the 12Z-00Z maximum (txn) and the highest 3-hourly temperature the same run places inside the station's local calendar day, so a maximum outside the Blend's daytime window is not missed; spread = the txn row's xnd, floored at 2.0F; only the latest run on the wire 100 minutes after its run time before the print. Implied probability per bracket from a normal at that mean and spread with the 0.5F rounding of integer thresholds. An opportunity is registered once per bracket per run: the first print after the run came on the wire at which the implied probability of a side exceeds its traded price by Kalshi's quadratic taker fee (0.07 x p x (1-p), rounded up to the cent) plus 0.05; the strategy buys one contract of that side at that price. The registration set is the CSV of those opportunities (hash sealed); outcomes come from Kalshi's result field read once, after sealing, by run_trial.py --final. Station-day = unit, its value the mean net over its opportunities (payoff - price - fee); the t-statistic's standard error is clustered by calendar day and at least 50 calendar days must carry the sample; win rate and clustering over station-days; opportunities whose market shows no yes/no result drop their station-day and count against max_dropped_fraction.",
+    "warmup_bars": 0
+  },
+  "lifetime_trials_before": 8,
+  "margin_over_fee": 0.05,
+  "min_calendar_days": 50,
+  "notes": "Drafted 2026-10-19; unsealed until Chidera runs this file. The premise sizing (sizing_result.md) could not retire the claim: its pre-fixed bar cleared at every spread, which showed the bar measured model sharpness, not the crowd; the spread-free check found the crowd's centre within 0.8F of the Blend on the median station-day and 3F+ away on 5% (72 of 1,433), with $1.43M traded on the Blend's side of those days. Two bars, both required: KILL on station-day net profit, and the Blend's Brier better than the price's by BRIER_GAP on the registered prints. Highs only; lows are a separate claim with a harder clean window and are not part of this trial. Run once with run_trial.py --final; RUN.lock enforces it.",
+  "provenance": {
+    "registration_csv_rows": 22395,
+    "registration_csv_sha256": "7f9d4b197a2bd64d54f8f2fce5f50cc846d5cbc25a9c9dfabca7b3ab77668259",
+    "run_trial_py_sha256": "93adb9b55bf1d4bceabfb3d98c8d751037501eb0bfa8214417e7a06f0426bde1",
+    "sealed_hypothesis_py_sha256": "955c198e99fd4f4c982745822de3374d5622df3a97ce3d4e3d38ed58722ab246",
+    "size_premise_py_sha256": "6f6c722b8823fcc722802a621152acf04a5854c6158dae77ed352d9496eb9201"
+  },
+  "sealed_at": "2026-10-19T10:34:29.793928-04:00",
+  "spread_floor_f": 2.0
+}

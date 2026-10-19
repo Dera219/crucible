@@ -802,3 +802,44 @@ buying side — stated and sized before anything is sealed; "no catalyst" is not
 
 **Lifetime trials: 8.** Eight registered claims on this universe, eight dead; the next bar is
 t ≥ 2.77.
+
+---
+
+## 2026-10-19 — Trial 9 registered and SEALED before it was run
+
+**Kalshi daily highs vs the National Blend.** The first claim off the CRSP universe. After
+eight dead equity trials the search space moved to a capacity-limited venue a fund will not
+enter; the discipline did not move. The claim, the rule, the window, the forecast construction
+and the bars are fixed in a registration file in the private registrations folder; only its
+hash is published here, and the file is revealed in full, whatever the result, after the one run.
+
+- registration.json SHA-256: `f5e6dcbb8b3fe30b3a594c5a47eb0a2ceec11b7a4979a62baa99b6580de48936`
+- hypothesis fingerprint: `f71dc60c2a8a6c1c`
+- registration set: 22,395 opportunities over 1,478 station-days and 65 calendar days, from
+  Kalshi's public trade tape for 24 US daily-maximum-temperature series, markets closing
+  2026-07-20 to 2026-10-18, prints between each market's open and 12:00Z of its day only (before
+  any daytime maximum exists); the set's SHA-256 is inside the sealed file
+- forecast: NBM short-range runs from the IEM archive, the larger of the 12Z–00Z maximum and
+  the highest 3-hourly temperature the run places inside the station's local calendar day,
+  spread = the run's own, floored at 2°F; only the latest run on the wire 100 minutes after its
+  run time before each print; one opportunity per bracket per run, the first print at which a
+  side's implied probability beats its price by the taker fee plus 5 points
+- bars: at least 100 station-days and 50 calendar days; mean net profit per $1 contract after
+  the fee ≥ 0.03; t ≥ 2.77 (Bonferroni over 9 lifetime trials) with the standard error
+  clustered by calendar day; win rate ≥ 55% of station-days; the top 10% of station-days carry
+  ≤ 50% of the profit; dropped ≤ 20%; and the Blend's Brier score must beat the traded price's
+  by ≥ 0.01 on the registered opportunities. All, or it dies.
+- risk registered: the Blend's stated spread is underdispersive and the 3-hourly archive reads
+  an off-window peak low; both errors land against the claim, not for it.
+
+**What the sizing could and could not say.** A bar fixed before the read (median day ≥ $2,000
+of volume 10+ points from the Blend-implied probability after fee) cleared at $115k, and a
+spread sweep then showed the count rises as the forecast is made duller: that statistic
+measured the model's sharpness, not the crowd's error, and is retracted as evidence. The
+spread-free check: the crowd's centre sits within 0.8°F of the Blend on the median station-day,
+3°F+ away on 5% (72 of 1,433), with $1.43M traded on the Blend's side of those days. Size
+neither retires nor supports this claim. No outcome has been read.
+
+Sealed by Chidera's instruction after critique of two weaknesses (the calendar-day maximum and
+the independence of prints), both fixed before the seal. The run is his, once:
+`run_trial.py --final`; RUN.lock enforces it.

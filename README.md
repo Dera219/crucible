@@ -201,11 +201,14 @@ print(diagnose(weights, prices))         # kills most ideas in under a second
 ## What it does not claim
 
 **It has not found an edge.** It has real data now — a survivorship-free 2015-2025 CRSP extract,
-6,635 US common-stock securities, 2,964 of them delisted in-sample — and exactly one hypothesis has
-been run against it: spin-off orphan forced selling, registered and sealed by commit-reveal before
-the run, then killed (mean abnormal return −1.35% against a +2.5% bar; see SEARCH_LOG.md and
-`registrations/`). Nothing else has been backtested, deliberately: a backtest run before the kill
-criteria are fixed is a trial that raises the deflation bar for whatever is eventually claimed.
+6,635 US common-stock securities, 2,964 of them delisted in-sample — and the lifetime trial count
+is nine, all dead: five exploratory looks, then four claims registered and sealed by commit-reveal
+before the run and killed — spin-off orphan forced selling (mean abnormal return −1.35% against a
++2.5% bar), spin-off holder unloading, deal-break unwinds, and, on Kalshi's public trade tape,
+daily temperature highs against the National Blend (see SEARCH_LOG.md and `registrations/`). The
+next claim must clear t ≥ 2.81. Nothing outside that ledger has been backtested, deliberately: a
+backtest run before the kill criteria are fixed is a trial that raises the deflation bar for
+whatever is eventually claimed.
 Every number in this README is from synthetic data, planted signals, the code's own behaviour, or
 a measurement of the data itself.
 

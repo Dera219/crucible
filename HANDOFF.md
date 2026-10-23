@@ -5,11 +5,14 @@ is verified against the actual extract, not against fixtures.
 
 ## Where things stand
 
-crucible is complete as a platform and has real data in it. **One hypothesis has been registered and
-run** — spin-off orphan forced selling, trial 6, sealed by commit-reveal and then killed on
-2026-10-14 (SEARCH_LOG.md, `registrations/trial-6-spinoff-orphans/`). Nothing else has been
-backtested, deliberately, because a backtest run before the criteria are fixed is a trial that
-raises the deflation bar for whatever is eventually claimed. The lifetime trial count is 6.
+crucible is complete as a platform and has real data in it. **Four claims have been registered and
+run, and all four were killed** — trials 6–9, each sealed by commit-reveal before the run: spin-off
+orphan forced selling (2026-10-14), spin-off holder unloading and deal-break unwinds (2026-10-15),
+and Kalshi daily highs against the National Blend (2026-10-19). See SEARCH_LOG.md and
+`registrations/`. Nothing outside that ledger has been backtested, deliberately, because a backtest
+run before the criteria are fixed is a trial that raises the deflation bar for whatever is
+eventually claimed. The lifetime trial count is 9 (the five exploratory looks plus trials 6–9),
+all dead; the next bar is t ≥ 2.81.
 
 ```
 410 tests · ruff + mypy strict clean (package AND scripts) · public at github.com/Dera219/crucible

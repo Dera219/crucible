@@ -16,14 +16,20 @@ That last number is what this README is about.
 ## The finding
 
 I kept a record of every bug found after the tests were green. When I lined them up, the pattern
-was not subtle:
+was not the one I expected:
 
-> **Twelve of the thirteen made results look *better* than reality. None made them look worse.**
+> **All fourteen passed a green test suite, and they cut both ways: some made results look
+> *better* than reality, others hid what was really there.**
 
-That is not a coincidence, and it is not bad luck. In quantitative research the errors are
-**asymmetric by construction**. A bug that loses information gets noticed — the strategy stops
-working, someone investigates. A bug that *adds* information looks like a discovery, gets
-celebrated, and gets funded. Nobody debugs a good result.
+On the flattering side: a delisting loss computed and then thrown away, so `-100%` and
+`exit flat` scored the same (#1); a 2% daily loss limit that let 9.15% go (#9); a still-forming
+pre-market bar that leaked the future into live trading (#10). On the other side: a planted edge
+of IC 0.13 measured as 0.008 (#4), and capacity read as $6.4k instead of $1.6m (#3).
+
+The flattering kind is the more dangerous, because nobody debugs a good result. But a passing
+suite stopped neither kind, and none of the fourteen was caught by the tests that existed. The
+*Found by* column is the useful part: planting a signal of known strength, fuzzing an accounting
+identity, simulating a crash loop, asking what happens on a half fill.
 
 So the interesting engineering question stopped being "does the code work" and became **"how do
 you find the bugs that are hiding behind a passing test and a plausible number?"**
@@ -32,7 +38,7 @@ Every technique below came out of trying to answer that.
 
 ---
 
-## The thirteen
+## The fourteen
 
 | # | Bug | Measured impact | Found by |
 |---|---|---|---|
